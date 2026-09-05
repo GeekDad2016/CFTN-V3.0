@@ -15,6 +15,31 @@ from .artifact import load_bundle
 from .live import Store, GPULock
 
 
+def training_process():
+    """Read the live worker, including older workers without startup events."""
+    for entry in Path('/proc').glob('[0-9]*'):
+        try:
+            args = (entry/'cmdline').read_bytes().decode().split('\0')
+            if 'cftn_v3.cli' not in args or not any(x in args for x in ('train', 'evaluate')):
+                continue
+            def option(name, default=None):
+                return args[args.index(name)+1] if name in args else default
+            return {'pid': int(entry.name), 'phase': option('--mode', 'specialist') if 'train' in args else 'evaluation',
+                    'targets': [option('--tower')] if option('--tower') else [],
+                    'steps': int(option('--steps', '1000'))}
+        except (OSError, ValueError, IndexError, UnicodeDecodeError):
+            continue
+    return None
+
+
+def log_tail(path, size=12000):
+    if not path.exists(): return ''
+    with path.open('rb') as stream:
+        stream.seek(0, 2)
+        stream.seek(max(0, stream.tell()-size))
+        return stream.read().decode('utf-8', errors='replace')
+
+
 def create_model(config, device):
     tokenizer = ByteTokenizer()
     if config.coordinator != 'tiny':
@@ -70,6 +95,7 @@ def serve(root, device, host='127.0.0.1', port=8790):
             store = Store(root/'live.sqlite')
             try:
                 status = json.loads((root/'status.json').read_text()) if (root/'status.json').exists() else {}
+                worker = training_process()
                 alive = False
                 if status.get('pid'):
                     try: os.kill(status['pid'], 0); alive = True
@@ -79,13 +105,16 @@ def serve(root, device, host='127.0.0.1', port=8790):
                 if metrics.exists():
                     with metrics.open('rb') as stream:
                         stream.seek(0, 2)
-                        offset = max(0, stream.tell()-2_000_000)
+                        offset = max(0, stream.tell()-32_000_000)
                         stream.seek(offset)
                         if offset: stream.readline()
                         for line in stream:
                             try: history.append(json.loads(line))
                             except (ValueError, UnicodeDecodeError): pass
+                # Preserve each stage's history without sending every optimizer step.
+                history = [r for i, r in enumerate(history) if not r.get('step') or r['step'] % 5 == 0 or i == len(history)-1 or (i+1 < len(history) and history[i+1].get('pid') != r.get('pid'))]
                 self.respond({'active': store.active(), 'candidate': status, 'process_alive': alive,
+                              'worker': worker, 'log_tail': log_tail(root/'bootstrap.log'),
                               'history': history, 'stage_steps': 1000,
                               'status_age_seconds': max(0, time.time()-status['updated']) if status.get('updated') else None,
                               'profile': json.loads((root/'profile/profile.json').read_text()) if (root/'profile/profile.json').exists() else None,

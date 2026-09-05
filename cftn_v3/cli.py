@@ -165,6 +165,7 @@ def main(argv=None):
                 elif args.command == 'teacher':
                     result = teacher(args, config)
                 elif args.command == 'train':
+                    writer({'state': 'starting', 'phase': args.mode, 'targets': [args.tower] if args.tower else list(TOWERS), 'stage_steps': args.steps})
                     from .data import audit
                     audit(args.data)
                     rows = read_rows(Path(args.data)/'train.jsonl')
@@ -187,6 +188,7 @@ def main(argv=None):
                         state = None
                     state = train(model, rows, plan, args.steps, state=state, status=writer)
                     path = args.output or root/'candidate.cftn'
+                    writer({'state': 'saving', 'phase': args.mode, 'targets': list(targets), 'step': state['step'], 'loss': state['loss']})
                     result = {'bundle': str(path), 'sha256': save_bundle(path, model, training=state,
                         metadata={'accepted': False, 'dataset': str(Path(args.data).resolve()), 'mode': args.mode}),
                         'loss': state['loss'], 'isolation': state['frozen_hashes_verified']}
