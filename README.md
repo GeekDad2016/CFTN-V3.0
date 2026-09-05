@@ -1,5 +1,12 @@
 # CFTN V3.0
 
+RunPod storage: deploy this repository at `/workspace/V3.0`. Run the shell
+scripts from this checkout; they change to the project directory before running.
+Datasets (`data/`), checkpoints, logs and live state (`artifacts/`) therefore
+remain on persistent `/workspace` storage. The private Git remote is at
+`/workspace/V3.0.git`. Downloaded model assets use `/root/.cache/huggingface`
+on the pod's local disk and can be downloaded again when replacing the pod.
+
 Selective continual learning across twelve scratch-trained specialists, with
 English and Romanian interfaces and a frozen pretrained coordinator.
 

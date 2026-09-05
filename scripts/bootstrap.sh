@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+export HF_HOME=/root/.cache/huggingface
 CONFIG="${CFTN_CONFIG:-artifacts/profile/selected_config.json}"
 test -f "$CONFIG" || { echo 'Run production profiling first, or set CFTN_CONFIG explicitly.'; exit 1; }
 STEPS="${CFTN_STEPS:-1000}"
