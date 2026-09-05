@@ -18,5 +18,8 @@ cftn = "cftn_v3.cli:main"
 [tool.setuptools.packages.find]
 include = ["cftn_v3*"]
 
+[tool.setuptools.package-data]
+cftn_v3 = ["dashboard.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

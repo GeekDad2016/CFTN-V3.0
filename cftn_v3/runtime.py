@@ -64,7 +64,7 @@ def serve(root, device, host='127.0.0.1', port=8790):
 
         def do_GET(self):
             if self.path == '/':
-                return self.respond(PAGE, html=True)
+                return self.respond(Path(__file__).with_name('dashboard.html').read_text(encoding='utf-8'), html=True)
             if self.path != '/api/status':
                 return self.respond({'error': 'not found'}, 404)
             store = Store(root/'live.sqlite')
@@ -74,7 +74,19 @@ def serve(root, device, host='127.0.0.1', port=8790):
                 if status.get('pid'):
                     try: os.kill(status['pid'], 0); alive = True
                     except OSError: pass
+                history = []
+                metrics = root/'metrics.jsonl'
+                if metrics.exists():
+                    with metrics.open('rb') as stream:
+                        stream.seek(0, 2)
+                        offset = max(0, stream.tell()-2_000_000)
+                        stream.seek(offset)
+                        if offset: stream.readline()
+                        for line in stream:
+                            try: history.append(json.loads(line))
+                            except (ValueError, UnicodeDecodeError): pass
                 self.respond({'active': store.active(), 'candidate': status, 'process_alive': alive,
+                              'history': history, 'stage_steps': 1000,
                               'status_age_seconds': max(0, time.time()-status['updated']) if status.get('updated') else None,
                               'profile': json.loads((root/'profile/profile.json').read_text()) if (root/'profile/profile.json').exists() else None,
                               'languages': ['en', 'ro']})
