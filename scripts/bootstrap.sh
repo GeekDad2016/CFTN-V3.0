@@ -7,7 +7,11 @@ test -f "$CONFIG" || { echo 'Run production profiling first, or set CFTN_CONFIG 
 STEPS="${CFTN_STEPS:-1000}"
 python -m cftn_v3.cli prepare
 mkdir -p artifacts
-python -m cftn_v3.cli train --config "$CONFIG" --mode routing --steps "$STEPS" --output artifacts/bootstrap.cftn
+if [ "${CFTN_RESUME_AFTER_ROUTING:-0}" = 1 ]; then
+  test -f artifacts/bootstrap.cftn
+else
+  python -m cftn_v3.cli train --config "$CONFIG" --mode routing --steps "$STEPS" --output artifacts/bootstrap.cftn
+fi
 for tower in math string code formal_logic science retrieval long_context multilingual tool_use structured_data information_extraction commonsense; do
   python -m cftn_v3.cli train --bundle artifacts/bootstrap.cftn --tower "$tower" --steps "$STEPS" --output artifacts/bootstrap.cftn
 done
