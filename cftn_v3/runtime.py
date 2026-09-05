@@ -75,7 +75,8 @@ def serve(root, device, host='127.0.0.1', port=8790):
                     try: os.kill(status['pid'], 0); alive = True
                     except OSError: pass
                 self.respond({'active': store.active(), 'candidate': status, 'process_alive': alive,
-                              'status_age_seconds': time.time()-status.get('updated', time.time()),
+                              'status_age_seconds': max(0, time.time()-status['updated']) if status.get('updated') else None,
+                              'profile': json.loads((root/'profile/profile.json').read_text()) if (root/'profile/profile.json').exists() else None,
                               'languages': ['en', 'ro']})
             finally:
                 store.db.close()
