@@ -1,0 +1,9 @@
+__pycache__/
+.pytest_cache/
+*.egg-info/
+.venv/
+artifacts/
+data/
+*.cftn
+.env
+deployment.local.json
