@@ -20,6 +20,8 @@ def training_process():
     for entry in Path('/proc').glob('[0-9]*'):
         try:
             args = (entry/'cmdline').read_bytes().decode().split('\0')
+            if 'cftn_v3.tower_repairs' in args:
+                return {'pid':int(entry.name),'phase':'specialist','targets':[],'steps':1000,'log':'tower_repairs.log'}
             if 'cftn_v3.math_repair' in args:
                 return {'pid': int(entry.name), 'phase': 'specialist', 'targets': ['math'], 'steps': 1000, 'log': 'math_repair.log'}
             if 'cftn_v3.quick_evaluation' in args:
