@@ -1,5 +1,25 @@
 # CFTN V3.0
 
+### Offline English teacher cycles
+
+Install `.[teacher]`, then run `python -m cftn_v3.teacher_cycles prepare` to
+download `openai/gsm8k` at revision `740312add88f781978c0658806c59bc2815b9866`
+(MIT) into persistent `data/teacher`. The test split is excluded from teacher
+generation and training; each cycle also reserves a disjoint new-material panel.
+`python -m cftn_v3.teacher_cycles cycle` generates at most 128 Qwen answers and,
+once enough verified records exist, runs at most 100 Math-only continual updates
+with 25% replay. It requires an accepted bootstrap release and the shared GPU
+lock. Repeat the command for subsequent bounded cycles; the database cursor
+persists across restarts. Rejected answers never enter training. Only final
+numeric answers are checked against the pinned reference; teacher reasoning is
+not validated or used as supervision. This is a math expansion, not broad
+all-domain distillation. Full release gates remain mandatory.
+
+Subsequent training stages record a 32-example English development evaluation
+per target tower, including sample predictions. These are informational and do
+not replace the full release panels. Earlier already-running stages do not gain
+this hook retroactively; communication/integration evaluate all towers.
+
 RunPod storage: deploy this repository at `/workspace/V3.0`. Run the shell
 scripts from this checkout; they change to the project directory before running.
 Datasets (`data/`), checkpoints, logs and live state (`artifacts/`) therefore

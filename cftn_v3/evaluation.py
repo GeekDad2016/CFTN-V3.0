@@ -5,7 +5,7 @@ import random
 import torch
 
 from .config import TOWERS, LANGUAGES
-from .data import verify
+from .teacher_cycles import verify
 from .contracts import ExecutionPlan, Call
 
 

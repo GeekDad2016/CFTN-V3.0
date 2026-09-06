@@ -10,7 +10,8 @@ from torch.nn import functional as F
 
 from .config import TOWERS
 from .contracts import UpdatePlan, Evidence, Call, ExecutionPlan
-from .data import sample_update, verify
+from .data import sample_update
+from .teacher_cycles import verify
 
 
 def parameter_hashes(model):

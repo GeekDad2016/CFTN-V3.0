@@ -29,6 +29,10 @@ function towerDetails(){
  const stats=[['Recorded updates',last?String(last.step):'No updates recorded'],['Latest loss',last?last.loss.toFixed(5):'Not available'],['First recorded loss',first?first.loss.toFixed(5):'Not available'],['Throughput',last?.examples_per_second?last.examples_per_second.toFixed(1)+' examples/s':'Not available'],['Elapsed training time',duration(last?.elapsed_seconds)],['Peak allocated GPU memory',last?.gpu?(last.gpu.peak/2**30).toFixed(1)+' GiB':'Not available'],['Exercise',skills[names.indexOf(selectedTower)]],['Languages','English and Romanian'],['Validation accuracy','Pending evaluation'],['Generated model answers','Not recorded during this training run']];
  for(const [label,value] of stats){const row=document.createElement('div');row.className='detail';const a=document.createElement('span'),b=document.createElement('b');a.textContent=label;b.textContent=value;row.append(a,b);host.append(row)}
  plot(rows,'towerChart');
+ const report=snapshot.tower_evaluations?.[selectedTower], group=report?.groups?.[selectedTower+':en'];
+ set('validationNote',group?`English validation: ${group.correct}/${group.count} correct (${(group.accuracy*100).toFixed(1)}%). Informational panel, not release acceptance.`:'English validation pending. Training loss is not a correctness score.');
+ if(report?.samples){for(const sample of report.samples){const item=document.createElement('p');item.style.whiteSpace='pre-wrap';item.textContent='Question: '+sample.prompt+'\nExpected: '+sample.expected+'\nModel: '+sample.output+'\n'+(sample.correct?'Correct':'Incorrect');host.append(item)}}
+
 }
 function activity(d){
  snapshot=d;const w=d.worker,c=d.candidate||{};

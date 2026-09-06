@@ -11,6 +11,7 @@ dependencies = ["torch>=2.5", "transformers>=4.51,<5", "safetensors>=0.5", "hugg
 
 [project.optional-dependencies]
 test = ["pytest>=8"]
+teacher = ["pyarrow>=18"]
 
 [project.scripts]
 cftn = "cftn_v3.cli:main"

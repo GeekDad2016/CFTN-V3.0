@@ -60,6 +60,16 @@ def load_bundle(path, device='cpu', training=False):
                 target = (root/name).resolve()
                 if root.resolve() not in target.parents or '\\' in name:
                     raise ValueError('unsafe artifact path')
+                if name == 'training.pt' and not training:
+                    # Validate optimizer bytes without extracting them onto pod-local disk.
+                    import hashlib
+                    digest = hashlib.sha256()
+                    with z.open(name) as source:
+                        for block in iter(lambda: source.read(1024*1024), b''):
+                            digest.update(block)
+                    if digest.hexdigest() != expected:
+                        raise ValueError('artifact checksum mismatch')
+                    continue
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with z.open(name) as source, target.open('wb') as dest:
                     import shutil

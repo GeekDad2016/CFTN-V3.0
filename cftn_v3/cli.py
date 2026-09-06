@@ -104,6 +104,7 @@ def profile(args, config):
 
 
 def teacher(args, config):
+    from .teacher_cycles import verify
     if not args.input:
         raise ValueError('teacher requires --input with verifiable source records')
     rows = read_rows(args.input)
@@ -192,6 +193,8 @@ def main(argv=None):
                     result = {'bundle': str(path), 'sha256': save_bundle(path, model, training=state,
                         metadata={'accepted': False, 'dataset': str(Path(args.data).resolve()), 'mode': args.mode}),
                         'loss': state['loss'], 'isolation': state['frozen_hashes_verified']}
+                    from .progress_eval import progress_evaluate
+                    progress_evaluate(model, args.data, root, targets, writer)
                 elif args.command == 'evaluate':
                     model, _, _ = load_bundle(args.bundle, args.device)
                     rows = read_rows(args.input or Path(args.data)/'development.jsonl')
