@@ -20,6 +20,8 @@ def training_process():
     for entry in Path('/proc').glob('[0-9]*'):
         try:
             args = (entry/'cmdline').read_bytes().decode().split('\0')
+            if 'cftn_v3.quick_evaluation' in args:
+                return {'pid': int(entry.name), 'phase': 'evaluation', 'targets': [], 'steps': 0}
             if 'cftn_v3.cli' not in args or not any(x in args for x in ('train', 'evaluate')):
                 continue
             def option(name, default=None):

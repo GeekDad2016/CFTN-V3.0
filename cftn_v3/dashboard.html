@@ -36,6 +36,10 @@ function towerDetails(){
 }
 function activity(d){
  snapshot=d;const w=d.worker,c=d.candidate||{};
+ if(c.phase==='evaluation'&&Number.isFinite(c.total)){
+ set('phase','Evaluation');set('target',(c.targets||[]).map(pretty).join(', ')||'English progress panel');set('step',`${c.completed||0} / ${c.total} answers`);set('progressLabel','English progress evaluation');set('percent',`${((c.completed||0)/Math.max(1,c.total)*100).toFixed(1)}%`);$('progress').style.width=((c.completed||0)/Math.max(1,c.total)*100)+'%';set('loss','—');set('speed',Number.isFinite(c.correct)?`${c.correct} correct so far`:'Answers saved after each example');set('eta',duration(c.remaining_seconds));set('health',c.state==='finished'?'Evaluation complete':c.state==='starting'?'Loading evaluation':'● Evaluating');
+ }
+
  const transition=w&&w.pid!==c.pid;
  const state=transition?'starting':c.state;
  let message=w?`${pretty(w.phase)}${w.targets.length?' · '+pretty(w.targets[0]):''}: `:'No training worker is running. ';
