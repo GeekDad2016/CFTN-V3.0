@@ -21,7 +21,7 @@ def traces(start,count):
     rows=[]
     for index in range(start,start+count):
         a=2+index%97;b=2+index//97
-        math=task('math',f'Calculate {a}+{b}.',f'<work>{a}+{b}={a+b}</work><answer>{a+b}</answer>')
+        math=task('math',f'Calculate {a}+{b}.',f'<answer>{a+b}</answer>')
         string=task('string',f'Reverse exactly: {a+b}',str(a+b)[::-1])
         code=task('code',f'Write Python function solve(x) that adds {a+b}.',f'def solve(x):\n    return x + {a+b}')
         rows.extend([math,string,code])
@@ -92,7 +92,7 @@ def evaluate_auto(model,rows):
 
 def train_delegation(model,cycle,writer):
     from .training import train,make_plan
-    rows=traces((cycle%8)*32,32)
+    rows=traces((cycle%4)*256,256)
     panel=traces(1500,2)
     model.config.active=TOWERS
     before=evaluate_auto(model,panel)
@@ -100,16 +100,31 @@ def train_delegation(model,cycle,writer):
     stages=[]
     from .data import example
     routing_rows=rows+[{**example(t,i,'en'),'source':SOURCE} for t in TOWERS for i in range(8)]
-    stages.append(train(model,routing_rows,make_plan('routing',TOWERS,routing_rows,verifier=verified),50,status=writer,verifier=verified))
+    stages.append(train(model,routing_rows,make_plan('routing',TOWERS,routing_rows,verifier=verified),1000,
+        status=lambda m:writer({**m,'stage_steps':1000}),verifier=verified))
+    route_correct=0
+    for r in panel:
+        try:
+            predicted=model.route(r['prompt'])
+            route_correct+=({(c.tower,c.round,c.depends_on) for c in predicted.calls}==
+                            {(c.tower,c.round,c.depends_on) for c in oracle(r).calls})
+        except ValueError:pass
+    if route_correct/len(panel)<.9:
+        return {'before':before,'after':evaluate_auto(model,panel),'experimental':True,
+                'gate':'routing_below_90_percent','routing_only_accuracy':route_correct/len(panel),
+                'isolation_checks':stages[-1]['frozen_hashes_verified'],'stages':['routing']},stages[-1]
     plans=[{**r,'prompt':planner_prompt(r['prompt'],oracle(r)), 'target':canonical(r['routing']['requests'])} for r in rows]
-    stages.append(train(model,plans,make_plan('planning',TARGETS,plans,verifier=verified),25,status=writer,verifier=verified))
-    # Explicit local subtask supervision, then differentiable message/synthesis learning.
-    for t in TARGETS:
-        local=[r for r in rows if r['tower']==t and not r.get('specialist_targets')]
-        replay=[example(t,i,'en') for i in range(32)]
-        stages.append(train(model,local,make_plan('continual',(t,),local,verifier=verified),25,replay=replay,status=writer,verifier=verified))
+    stages.append(train(model,plans,make_plan('planning',TARGETS,plans,verifier=verified),200,
+        status=lambda m:writer({**m,'stage_steps':200}),verifier=verified))
+    planned=evaluate_auto(model,panel)
+    if planned['planner_validity']<.9:
+        return {'before':before,'after':planned,'experimental':True,'gate':'planner_below_90_percent',
+                'isolation_checks':all(s['frozen_hashes_verified'] for s in stages),
+                'stages':['routing','planning']},stages[-1]
+    # Native towers have already passed the caller's accuracy and retention gate.
     synthesis=rows+[{**r,'routing':{'targets':[],'rounds':{},'requests':{}}} for r in plans]
-    stages.append(train(model,synthesis,make_plan('synthesis',TARGETS,synthesis,verifier=verified),50,status=writer,verifier=verified))
+    stages.append(train(model,synthesis,make_plan('synthesis',TARGETS,synthesis,verifier=verified),200,
+        status=lambda m:writer({**m,'stage_steps':200}),verifier=verified))
     after=evaluate_auto(model,panel)
     return {'before':before,'after':after,'isolation_checks':all(s['frozen_hashes_verified'] for s in stages),
-            'stages':['routing','planning','three specialists','synthesis'],'experimental':True},stages[-1]
+            'stages':['routing','planning','synthesis'],'experimental':True},stages[-1]

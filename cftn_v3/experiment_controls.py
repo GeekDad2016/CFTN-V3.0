@@ -48,6 +48,10 @@ def math_examples(root):
     if not reports:return None
     latest=max(reports,key=lambda p:int(p.name.split('_')[0]))
     cycle=int(latest.name.split('_')[0]);report=json.loads(latest.read_text())
+    if report.get('trained_examples'):
+        return {'round':cycle+1,'trained_examples':report['trained_examples'],
+                'before':report['before'],'after':report['after'],
+                'seen_before':report.get('seen_before'),'seen_after':report.get('seen_after')}
     from .data import read_rows
     data=root.resolve().parent.parent/'data/learning_experiment'
     count=len(read_rows(data/'math_train.jsonl'))
