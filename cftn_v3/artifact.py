@@ -18,7 +18,7 @@ from .model import CFTN, ByteTokenizer
 def save_bundle(path, model, *, training=None, metadata=None):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=path.parent) as tmp:
+    with tempfile.TemporaryDirectory(dir=os.environ.get('CFTN_BUNDLE_SCRATCH', path.parent)) as tmp:
         root = Path(tmp)
         weights = root/'weights.safetensors'
         save_file({k: v.detach().cpu().contiguous().clone() for k, v in model.state_dict().items()}, str(weights))

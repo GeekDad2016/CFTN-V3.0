@@ -81,6 +81,9 @@ def catalog(root):
 
 
 def verify(row, output=None):
+    if row.get('source') == 'cftn_addition_repair_v1':
+        from .math_repair import verify as repair_verify
+        return repair_verify(row, output)
     if row.get('source') != SOURCE:
         return builtin_verify(row, output)
     try:
