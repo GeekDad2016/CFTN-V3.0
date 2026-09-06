@@ -25,7 +25,7 @@ def training_process():
                 try:
                     state=json.loads((entry/'cwd'/'artifacts/status.json').read_text())
                     if state.get('pid')==int(entry.name):
-                        return {'pid':int(entry.name),'phase':state.get('phase','experiment'),'targets':state.get('targets',[]),'steps':50,'log':'learning_experiment.log'}
+                        return {'pid':int(entry.name),'phase':state.get('phase','experiment'),'targets':state.get('targets',[]),'steps':state.get('stage_steps',25 if state.get('phase')=='planning' else 50),'log':'learning_experiment.log'}
                 except (OSError,ValueError):pass
                 continue
             if 'cftn_v3.tower_repairs' in args:
@@ -134,7 +134,7 @@ def serve(root, device, host='127.0.0.1', port=8790):
                               'tower_evaluations': json.loads((root/'tower_evaluations.json').read_text()) if (root/'tower_evaluations.json').exists() else {},
                               'experiment': {'paused':(experiment_root/'PAUSED').exists(),'tests':snapshot(experiment_root),
                                   'latest':json.loads((experiment_root/'latest.json').read_text()) if (experiment_root/'latest.json').exists() else None},
-                              'history': history, 'stage_steps': 1000,
+                              'history': history, 'stage_steps': status.get('stage_steps') or (worker or {}).get('steps') or 1000,
                               'status_age_seconds': max(0, time.time()-status['updated']) if status.get('updated') else None,
                               'profile': json.loads((root/'profile/profile.json').read_text()) if (root/'profile/profile.json').exists() else None,
                               'languages': ['en', 'ro']})
