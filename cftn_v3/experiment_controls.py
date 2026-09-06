@@ -23,7 +23,8 @@ def submit(root,request):
     teach=request.get('teach') is True
     if teach and (not expected or tower not in ('math','retrieval','code','formal_logic')):
         raise ValueError('Teaching requires an expected answer and Math, Retrieval, Code or Formal logic')
-    payload={'tower':tower,'prompt':prompt,'expected':expected,'teach':teach}
+    payload={'tower':tower,'prompt':prompt,'expected':expected,'teach':teach,
+             'teacher_answer':str(request.get('teacher_answer',''))[:3000]}
     key=identity([payload,time.time_ns()])
     with db(root) as conn:
         if conn.execute('SELECT COUNT(*) FROM tests WHERE result IS NULL').fetchone()[0]>=32:raise ValueError('Test queue is full')
@@ -39,6 +40,27 @@ def snapshot(root):
 
 def pending(root):
     with db(root) as conn:return conn.execute('SELECT COUNT(*) FROM tests WHERE result IS NULL').fetchone()[0]
+
+
+def math_examples(root):
+    root=Path(root)
+    reports=[p for p in root.glob('*_math.json') if p.name.split('_')[0].isdigit()]
+    if not reports:return None
+    latest=max(reports,key=lambda p:int(p.name.split('_')[0]))
+    cycle=int(latest.name.split('_')[0]);report=json.loads(latest.read_text())
+    from .data import read_rows
+    data=root.resolve().parent.parent/'data/learning_experiment'
+    count=len(read_rows(data/'math_train.jsonl'))
+    batch=cycle%((count+47)//48)
+    taught=read_rows(data/f'teacher_{batch}_math.jsonl')[:4]
+    return {'round':cycle+1,'trained_examples':taught,'before':report['before'],'after':report['after']}
+
+
+def queue_math_examples(root):
+    examples=math_examples(root)
+    if not examples:raise ValueError('No completed Math learning block yet')
+    return [submit(root,{'tower':'math','prompt':r['prompt'],'expected':r['reference'],
+                        'teacher_answer':r['target'],'teach':False}) for r in examples['trained_examples']]
 
 
 def answer_pending(root,model,checkpoint):
