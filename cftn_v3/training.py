@@ -121,11 +121,13 @@ def train(model, rows, plan, steps, *, replay=(), status=None, state=None, verif
             with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=device.type == 'cuda'):
                 if plan.mode == 'routing':
                     loss = routing_loss(model, row)
+                elif plan.mode == 'planning':
+                    loss = supervised_loss(model, row)
                 elif plan.mode in {'specialist', 'continual'}:
                     loss = supervised_loss(model, row, row['tower'])
                 else:
                     route = row.get('routing', {'targets': [row['tower']], 'rounds': {row['tower']: 0}})
-                    calls = [Call(t, route['rounds'][t], row['prompt'], tuple(route.get('dependencies',{}).get(t,()))) for t in route['targets']]
+                    calls = [Call(t, route['rounds'][t], route.get('requests',{}).get(t,row['prompt']), tuple(route.get('dependencies',{}).get(t,()))) for t in route['targets']]
                     execution = ExecutionPlan(calls).validate(TOWERS)
                     messages = model.communicate(row['prompt'], execution)
                     loss = supervised_loss(model, row, messages=messages)

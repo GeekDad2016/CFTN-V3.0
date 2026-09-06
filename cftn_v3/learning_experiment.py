@@ -165,14 +165,8 @@ def run(root,data):
             if key not in completed:
                 service_pause()
                 model,_,_=load_bundle(checkpoint,'cuda')
-                items=[composition(i,'en') for i in range(100+(cycle%40)*64,148+(cycle%40)*64)]
-                items+=[example(t,i,'en') for t in ('math','string') for i in range(100+(cycle%40)*64,108+(cycle%40)*64)]
-                panel=[composition(i,'en') for i in range(3490,3494)]
-                before=evaluate(model,panel,mode='collaboration',max_tokens=64)
-                state=train(model,items,make_plan('communication',('math','string'),items),50,status=writer)
-                after=evaluate(model,panel,mode='collaboration',max_tokens=64)
-                disabled=evaluate(model,panel,mode='disabled',max_tokens=64)
-                report={'before':before,'after':after,'disabled_math':disabled,'note':'Trusted math-to-string plans; compares answers with one tower disabled. Not autonomous routing acceptance.'}
+                from .delegation import train_delegation
+                report,state=train_delegation(model,cycle,writer)
                 completed.append(key)
                 save_bundle(checkpoint,model,training=state,metadata={'experimental':True,'experiment_completed':completed,'last_report':report})
                 (root/f'{cycle}_communication.json').write_text(canonical(report))

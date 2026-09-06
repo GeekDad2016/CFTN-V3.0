@@ -19,7 +19,7 @@ def db(root):
 
 def submit(root,request):
     tower=request.get('tower','math');prompt=request.get('prompt','').strip();expected=request.get('expected','').strip()
-    if tower not in (*TOWERS,'coordinator') or not 1<=len(prompt)<=6000 or len(expected)>3000:raise ValueError('Invalid tower or question size')
+    if tower not in (*TOWERS,'coordinator','automatic') or not 1<=len(prompt)<=6000 or len(expected)>3000:raise ValueError('Invalid tower or question size')
     teach=request.get('teach') is True
     if teach and (not expected or tower not in ('math','retrieval','code','formal_logic')):
         raise ValueError('Teaching requires an expected answer and Math, Retrieval, Code or Formal logic')
@@ -46,8 +46,13 @@ def answer_pending(root,model,checkpoint):
         rows=conn.execute('SELECT id,payload FROM tests WHERE result IS NULL ORDER BY created LIMIT 8').fetchall()
         for key,payload in rows:
             r=json.loads(payload)
-            output=model.generate(r['prompt']+'\n',None if r['tower']=='coordinator' else r['tower'],max_tokens=128)
-            result={'answer':output,'checkpoint':checkpoint,'answered':time.time(),
+            trace=None
+            if r['tower']=='automatic':
+                from .delegation import automatic
+                trace=automatic(model,r['prompt']);output=trace['answer']
+            else:
+                output=model.generate(r['prompt']+'\n',None if r['tower']=='coordinator' else r['tower'],max_tokens=128)
+            result={'delegation':trace,'answer':output,'checkpoint':checkpoint,'answered':time.time(),
                 'exact_expected_match':output.strip()==r['expected'] if r['expected'] else None}
             conn.execute('UPDATE tests SET result=? WHERE id=?',(canonical(result),key))
             conn.commit()

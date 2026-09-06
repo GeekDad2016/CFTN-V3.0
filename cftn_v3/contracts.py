@@ -52,7 +52,7 @@ class UpdatePlan:
     evidence: tuple[Evidence, ...]
 
     def validate(self):
-        if self.mode not in {"specialist", "continual", "routing", "communication", "integration"}:
+        if self.mode not in {"specialist", "continual", "routing", "communication", "integration", "planning", "synthesis"}:
             raise ValueError("unknown training mode")
         if not self.targets or len(set(self.targets)) != len(self.targets) or set(self.targets)-set(TOWERS):
             raise ValueError("invalid update targets")
@@ -64,6 +64,10 @@ class UpdatePlan:
         return self
 
     def allows(self, name):
+        if self.mode == 'planning':
+            return name.startswith('coordinator.adapter.')
+        if self.mode == 'synthesis':
+            return name.startswith(('coordinator.adapter.', 'coordinator.receivers.')) or any(name.startswith(f'bridges.{t}.') for t in self.targets)
         if self.mode in {"specialist", "continual", "integration"}:
             if any(name.startswith(f"towers.{tower}.") for tower in self.targets):
                 return True

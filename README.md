@@ -17,6 +17,15 @@ not a current-world knowledge source. GSM8K and local synthetic questions cover
 the other domains. Source revisions and licenses are recorded in the dataset
 manifest. Completed stages persist in checkpoint metadata for restart safety.
 This experiment tests learning behavior, not broad competence or deployability.
+Each round also trains delegation: supervised Dispatcher tower/round/dependency
+selection with routing replay, coordinator adapter subtask-request generation,
+local specialist tasks, and differentiable bridge/final-answer synthesis. The
+first multi-tower scope is Math-to-String and Math-to-Code, alongside single-tower
+tasks. Automatic evaluation predicts the route and request texts, validates the
+plan, and compares final accuracy against coordinator-only responses. This does
+not establish general-purpose planning. Dashboard Automatic delegation tests
+show selected towers and generated requests, with explicit fallback on invalid
+plans. Teacher answer correctness and experimental deployment policy are unchanged.
 The dashboard queues questions for checkpoint boundaries and compares optional
 expected answers. Explicitly checked teaching examples can enter subsequent
 matching-tower updates; unchecked tests never enter training. Pause preserves the
