@@ -25,7 +25,7 @@ def training_process():
                 try:
                     state=json.loads((entry/'cwd'/'artifacts/status.json').read_text())
                     if state.get('pid')==int(entry.name):
-                        return {'pid':int(entry.name),'phase':state.get('phase','experiment'),'targets':state.get('targets',[]),'steps':state.get('stage_steps',25 if state.get('phase')=='planning' else 50),'log':'learning_experiment.log'}
+                        return {'pid':int(entry.name),'phase':state.get('phase','experiment'),'targets':state.get('targets',[]),'steps':state.get('stage_steps',200 if state.get('phase')=='planning' else 1000),'log':'learning_experiment.log'}
                 except (OSError,ValueError):pass
                 continue
             if 'cftn_v3.tower_repairs' in args:
