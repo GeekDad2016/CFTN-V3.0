@@ -3,8 +3,10 @@
 ### Automatic learning experiment
 
 `python -m cftn_v3.learning_experiment --wait` waits for tower repairs and then
-runs two bounded rounds of Math, retrieval/facts, Python, logic, and Math-to-String
-communication learning. Each stage has 50 updates. Teacher responses are explicitly
+runs continuous rounds of Math, retrieval/facts, Python, logic, and Math-to-String
+communication learning until paused from the dashboard. Each stage has 50 updates.
+Finite datasets wrap around and cached teacher responses are reused; this does
+not imply an unlimited supply of novel knowledge. Teacher responses are explicitly
 unverified experimental supervision; the default training verifier and public
 ingestion remain unchanged. Checkpoints in `artifacts/learning_experiment` never
 activate a release. Reports compare held-out reference loss and sample exact-match
@@ -15,6 +17,12 @@ not a current-world knowledge source. GSM8K and local synthetic questions cover
 the other domains. Source revisions and licenses are recorded in the dataset
 manifest. Completed stages persist in checkpoint metadata for restart safety.
 This experiment tests learning behavior, not broad competence or deployability.
+The dashboard queues questions for checkpoint boundaries and compares optional
+expected answers. Explicitly checked teaching examples can enter subsequent
+matching-tower updates; unchecked tests never enter training. Pause preserves the
+current block before taking effect. Checkpoints replace the experimental current
+file atomically; the repaired starting checkpoint remains preserved. Each completed
+stage saves a report and the dataset position in checkpoint metadata.
 
 ### Offline English teacher cycles
 

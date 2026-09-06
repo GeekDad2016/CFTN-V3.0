@@ -1,5 +1,6 @@
 """Automatic multi-domain learning experiment; never publishes accepted weights."""
 import argparse
+import itertools
 import gc
 import json
 import time
@@ -113,34 +114,59 @@ def run(root,data):
         with zipfile.ZipFile(checkpoint if checkpoint.exists() else root.parent/'tower_repairs/current.cftn') as z:
             meta=json.loads(z.read('manifest.json'))['metadata']
         completed=meta.get('experiment_completed',[])
-        for cycle in range(2):
+        from .experiment_controls import pending,answer_pending,teaching,consumed
+        consumed(root,meta.get('feedback_consumed',[]))
+        def service_pause():
+            while (root/'PAUSED').exists():
+                writer({'state':'paused','phase':'experiment','scope':'Learning paused; queued questions are still answered'})
+                if pending(root):
+                    test_model,_,_=load_bundle(checkpoint if checkpoint.exists() else root.parent/'tower_repairs/current.cftn','cuda')
+                    answer_pending(root,test_model,'paused checkpoint')
+                    del test_model;gc.collect();torch.cuda.empty_cache()
+                time.sleep(10)
+        start_cycle=max([int(k.split(':')[0]) for k in completed],default=0)
+        for cycle in itertools.count(start_cycle):
+            service_pause()
             for tower in DOMAINS:
                 key=f'{cycle}:{tower}'
                 if key in completed:continue
-                raw=read_rows(data/f'{tower}_train.jsonl')[cycle*48:(cycle+1)*48]
-                taught=teach(raw,data/f'teacher_{cycle}_{tower}.jsonl',writer)
+                service_pause()
+                pool=read_rows(data/f'{tower}_train.jsonl')
+                batch=cycle%((len(pool)+47)//48)
+                raw=pool[batch*48:(batch+1)*48]
+                taught=teach(raw,data/f'teacher_{batch}_{tower}.jsonl',writer)
+                feedback=teaching(root,tower)
+                # User test questions stay out of the fixed held-out panel.
+                heldout_ids={r['semantic_id'] for r in read_rows(data/f'{tower}_heldout.jsonl')}
+                feedback=[r for r in feedback if r['semantic_id'] not in heldout_ids]
+                taught=taught+feedback
                 if not taught:raise ValueError('teacher produced no nonempty answers')
                 writer({'phase':'specialist','state':'starting','targets':[tower],'scope':'Experimental continual learning'})
                 model,_,_=load_bundle(checkpoint if checkpoint.exists() else root.parent/'tower_repairs/current.cftn','cuda')
+                answer_pending(root,model,f'round {cycle+1} before {tower}')
                 heldout=read_rows(data/f'{tower}_heldout.jsonl')[:16]
                 before=measure(model,heldout,tower)
                 replay=[r for r in read_rows('data/train.jsonl') if r['tower']==tower and r['language']=='en' and not r.get('specialist_targets')]
                 if cycle:
                     replay+=read_rows(data/f'teacher_0_{tower}.jsonl')
                 plan=make_plan('continual',(tower,),taught,verifier=authorized_record)
-                state=train(model,taught,plan,50,replay=replay,status=writer,verifier=authorized_record)
+                state=train(model,taught,plan,50,replay=replay,status=lambda m:writer({**m,'round':cycle+1,'stage_steps':50}),verifier=authorized_record)
                 after=measure(model,heldout,tower)
                 report={'before':before,'after':after,'teacher_reference_agreement':sum(r['target'].strip()==r['reference'].strip() for r in taught)/len(taught),
                     'training_examples':len(taught),'steps':50,'isolation':state['frozen_hashes_verified'],'accepted_release':False}
                 completed.append(key)
-                save_bundle(checkpoint,model,training=state,metadata={'experimental':True,'experiment_completed':completed,'last_report':report})
+                save_bundle(checkpoint,model,training=state,metadata={'experimental':True,'experiment_completed':completed,'last_report':report,'feedback_consumed':[r['feedback_id'] for r in feedback]})
+                consumed(root,[r['feedback_id'] for r in feedback])
+                answer_pending(root,model,f'round {cycle+1} after {tower}')
+                (root/'latest.json').write_text(canonical({'round':cycle+1,'tower':tower,**report}))
                 (root/f'{cycle}_{tower}.json').write_text(canonical(report))
                 del model,state;gc.collect();torch.cuda.empty_cache()
             key=f'{cycle}:communication'
             if key not in completed:
+                service_pause()
                 model,_,_=load_bundle(checkpoint,'cuda')
-                items=[composition(i,'en') for i in range(100+cycle*64,148+cycle*64)]
-                items+=[example(t,i,'en') for t in ('math','string') for i in range(100+cycle*64,108+cycle*64)]
+                items=[composition(i,'en') for i in range(100+(cycle%40)*64,148+(cycle%40)*64)]
+                items+=[example(t,i,'en') for t in ('math','string') for i in range(100+(cycle%40)*64,108+(cycle%40)*64)]
                 panel=[composition(i,'en') for i in range(3490,3494)]
                 before=evaluate(model,panel,mode='collaboration',max_tokens=64)
                 state=train(model,items,make_plan('communication',('math','string'),items),50,status=writer)
@@ -150,6 +176,8 @@ def run(root,data):
                 completed.append(key)
                 save_bundle(checkpoint,model,training=state,metadata={'experimental':True,'experiment_completed':completed,'last_report':report})
                 (root/f'{cycle}_communication.json').write_text(canonical(report))
+                (root/'latest.json').write_text(canonical({'round':cycle+1,'tower':'communication',**report}))
+                answer_pending(root,model,f'round {cycle+1} communication')
                 del model,state;gc.collect();torch.cuda.empty_cache()
         writer({'state':'finished','phase':'experiment','result':{'completed':completed,'release_activated':False}})
 

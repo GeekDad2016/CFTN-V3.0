@@ -110,6 +110,8 @@ def serve(root, device, host='127.0.0.1', port=8790):
             try:
                 status = json.loads((root/'status.json').read_text()) if (root/'status.json').exists() else {}
                 worker = training_process()
+                from .experiment_controls import snapshot
+                experiment_root=root/'learning_experiment'
                 alive = False
                 if status.get('pid'):
                     try: os.kill(status['pid'], 0); alive = True
@@ -130,6 +132,8 @@ def serve(root, device, host='127.0.0.1', port=8790):
                 self.respond({'active': store.active(), 'candidate': status, 'process_alive': alive,
                               'worker': worker, 'log_tail': log_tail(root/((worker or {}).get('log') or ('math_repair.log' if status.get('scope') == 'Same-range Math repair' else 'quick_evaluation.log' if status.get('phase') == 'evaluation' and 'total' in status else 'bootstrap.log'))),
                               'tower_evaluations': json.loads((root/'tower_evaluations.json').read_text()) if (root/'tower_evaluations.json').exists() else {},
+                              'experiment': {'paused':(experiment_root/'PAUSED').exists(),'tests':snapshot(experiment_root),
+                                  'latest':json.loads((experiment_root/'latest.json').read_text()) if (experiment_root/'latest.json').exists() else None},
                               'history': history, 'stage_steps': 1000,
                               'status_age_seconds': max(0, time.time()-status['updated']) if status.get('updated') else None,
                               'profile': json.loads((root/'profile/profile.json').read_text()) if (root/'profile/profile.json').exists() else None,
@@ -143,6 +147,12 @@ def serve(root, device, host='127.0.0.1', port=8790):
                 return self.respond({'error': 'invalid payload size'}, 400)
             try:
                 request = json.loads(self.rfile.read(length))
+                if self.path == '/api/experiment/control':
+                    from .experiment_controls import control
+                    with lock:return self.respond(control(root/'learning_experiment',request.get('action')))
+                if self.path == '/api/experiment/test':
+                    from .experiment_controls import submit
+                    return self.respond({'queued':submit(root/'learning_experiment',request)})
                 store = Store(root/'live.sqlite')
                 try:
                     if self.path == '/api/ingest':
