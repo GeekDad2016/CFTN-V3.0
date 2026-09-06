@@ -20,6 +20,8 @@ def training_process():
     for entry in Path('/proc').glob('[0-9]*'):
         try:
             args = (entry/'cmdline').read_bytes().decode().split('\0')
+            if 'cftn_v3.math_repair' in args:
+                return {'pid': int(entry.name), 'phase': 'specialist', 'targets': ['math'], 'steps': 1000, 'log': 'math_repair.log'}
             if 'cftn_v3.quick_evaluation' in args:
                 return {'pid': int(entry.name), 'phase': 'evaluation', 'targets': [], 'steps': 0}
             if 'cftn_v3.cli' not in args or not any(x in args for x in ('train', 'evaluate')):
@@ -116,7 +118,7 @@ def serve(root, device, host='127.0.0.1', port=8790):
                 # Preserve each stage's history without sending every optimizer step.
                 history = [r for i, r in enumerate(history) if not r.get('step') or r['step'] % 5 == 0 or i == len(history)-1 or (i+1 < len(history) and history[i+1].get('pid') != r.get('pid'))]
                 self.respond({'active': store.active(), 'candidate': status, 'process_alive': alive,
-                              'worker': worker, 'log_tail': log_tail(root/('quick_evaluation.log' if status.get('phase') == 'evaluation' and 'total' in status else 'bootstrap.log')),
+                              'worker': worker, 'log_tail': log_tail(root/((worker or {}).get('log') or ('math_repair.log' if status.get('scope') == 'Same-range Math repair' else 'quick_evaluation.log' if status.get('phase') == 'evaluation' and 'total' in status else 'bootstrap.log'))),
                               'tower_evaluations': json.loads((root/'tower_evaluations.json').read_text()) if (root/'tower_evaluations.json').exists() else {},
                               'history': history, 'stage_steps': 1000,
                               'status_age_seconds': max(0, time.time()-status['updated']) if status.get('updated') else None,
