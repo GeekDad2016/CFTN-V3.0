@@ -1,5 +1,21 @@
 # CFTN V3.0
 
+### Automatic learning experiment
+
+`python -m cftn_v3.learning_experiment --wait` waits for tower repairs and then
+runs two bounded rounds of Math, retrieval/facts, Python, logic, and Math-to-String
+communication learning. Each stage has 50 updates. Teacher responses are explicitly
+unverified experimental supervision; the default training verifier and public
+ingestion remain unchanged. Checkpoints in `artifacts/learning_experiment` never
+activate a release. Reports compare held-out reference loss and sample exact-match
+accuracy before/after; equivalent code can be undercounted by exact matching.
+BoolQ (`google/boolq`, CC-BY-SA-3.0, revision
+`35b264d03638db9f4ce671b711558bf7ff0f80d5`) provides passage-based factual questions,
+not a current-world knowledge source. GSM8K and local synthetic questions cover
+the other domains. Source revisions and licenses are recorded in the dataset
+manifest. Completed stages persist in checkpoint metadata for restart safety.
+This experiment tests learning behavior, not broad competence or deployability.
+
 ### Offline English teacher cycles
 
 Install `.[teacher]`, then run `python -m cftn_v3.teacher_cycles prepare` to

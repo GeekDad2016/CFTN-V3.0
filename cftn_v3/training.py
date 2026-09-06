@@ -69,13 +69,13 @@ def routing_loss(model, row):
     return F.binary_cross_entropy_with_logits(wakes, target)+round_loss+F.binary_cross_entropy_with_logits(halt, torch.ones_like(halt))+F.binary_cross_entropy_with_logits(deps, dep_target)
 
 
-def make_plan(mode, targets, rows):
-    evidence = tuple(Evidence(r['id'], r['tower'], verify(r), r.get('verifier', '')) for r in rows)
+def make_plan(mode, targets, rows, *, verifier=verify):
+    evidence = tuple(Evidence(r['id'], r['tower'], verifier(r), r.get('verifier', '')) for r in rows)
     return UpdatePlan(mode, tuple(targets), evidence).validate()
 
 
-def train(model, rows, plan, steps, *, replay=(), status=None, state=None):
-    if not rows or any(not verify(r) for r in rows):
+def train(model, rows, plan, steps, *, replay=(), status=None, state=None, verifier=verify):
+    if not rows or any(not verifier(r) for r in rows):
         raise ValueError('training requires verified targets')
     if any(r['tower'] not in plan.targets for r in rows):
         raise ValueError('data exceeds update authorization')

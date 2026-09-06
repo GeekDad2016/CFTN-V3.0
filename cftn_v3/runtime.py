@@ -20,6 +20,14 @@ def training_process():
     for entry in Path('/proc').glob('[0-9]*'):
         try:
             args = (entry/'cmdline').read_bytes().decode().split('\0')
+            if 'cftn_v3.learning_experiment' in args:
+                # A waiting experiment must not mask the active repair worker.
+                try:
+                    state=json.loads((entry/'cwd'/'artifacts/status.json').read_text())
+                    if state.get('pid')==int(entry.name):
+                        return {'pid':int(entry.name),'phase':state.get('phase','experiment'),'targets':state.get('targets',[]),'steps':50,'log':'learning_experiment.log'}
+                except (OSError,ValueError):pass
+                continue
             if 'cftn_v3.tower_repairs' in args:
                 return {'pid':int(entry.name),'phase':'specialist','targets':[],'steps':1000,'log':'tower_repairs.log'}
             if 'cftn_v3.math_repair' in args:
