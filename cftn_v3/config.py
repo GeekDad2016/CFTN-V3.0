@@ -55,6 +55,7 @@ class Config:
     memory_fraction: float = 0.80
     hf_config: dict | None = None
     active: tuple = ()
+    specialist_specs: dict = dataclasses.field(default_factory=dict)
 
     def __post_init__(self):
         self.towers = tuple(self.towers)
@@ -64,6 +65,7 @@ class Config:
             raise ValueError("unsupported profile, tower registry, or languages")
         if set(self.active) - set(TOWERS):
             raise ValueError("unknown active capability")
+        if set(self.specialist_specs)-set(TOWERS):raise ValueError('unknown specialist specification')
 
     def as_dict(self):
         return dataclasses.asdict(self)

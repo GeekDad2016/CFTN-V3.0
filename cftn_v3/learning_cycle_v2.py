@@ -75,6 +75,8 @@ def run(root,data):
         active=meta.get('v2_active')
         writer({'phase':'loading','state':'starting','scope':'Canonical answer repair / 1000-step learning blocks'})
         model,state,_=load_bundle(source,'cuda',training=bool(active))
+        if model.config.specialist_specs:
+            raise RuntimeError('Assembled native specialists require typed-request coordination training; legacy word-problem loop is disabled')
         model.config.max_continual_steps=BLOCK_STEPS
         completed=meta.get('experiment_completed',[])
         last=max([int(k.split(':')[0]) for k in completed],default=-1)

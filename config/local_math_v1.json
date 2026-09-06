@@ -1,0 +1,14 @@
+{
+  "math_tower": {
+    "layers": 8,
+    "hidden_size": 256,
+    "attention_heads": 8,
+    "feed_forward_size": 1024,
+    "dropout": 0.1,
+    "max_sequence_length": 2048,
+    "receiver_layers": [2, 5],
+    "answer_min": -512,
+    "answer_max": 512
+  },
+  "purpose": "V12-compatible local native specialist; typed JSON Maths input and compact equation traces."
+}

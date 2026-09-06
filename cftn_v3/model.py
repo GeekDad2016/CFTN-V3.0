@@ -194,19 +194,27 @@ class CFTN(nn.Module):
         self.towers = nn.ModuleDict({name: Tower(258 if name == "string" else vocab,
             "small" if name == "string" and config.profile != "tiny" else config.profile,
             config.long_context if name == "long_context" else config.context) for name in TOWERS})
+        for name,spec in config.specialist_specs.items():
+            if spec['kind']!='legacy_math_v12' or name!='math':raise ValueError('unsupported native specialist')
+            from .local_specialist import LocalMathTower
+            self.towers[name]=LocalMathTower(spec['spec'])
         cw = self.coordinator.width
         self.bridges = nn.ModuleDict({name: nn.ModuleDict({
             "request": Bridge(cw, tower.width, config.message_tokens),
             "return": Bridge(tower.width, cw, config.message_tokens),
             "receiver": Receiver(tower.width)}) for name, tower in self.towers.items()})
         self.dispatcher = Dispatcher(cw)
+        self.last_execution_trace=[]
 
     def tokenizer_for(self, tower):
+        if tower in self.config.specialist_specs:
+            from .local_specialist import MathTokenizer
+            return MathTokenizer()
         return ByteTokenizer() if tower == "string" else self.tokenizer
 
     def ids(self, text, tower=None):
         tokenizer = self.tokenizer_for(tower) if tower else self.tokenizer
-        values = tokenizer.encode(text, add_special_tokens=False)
+        values = tokenizer.prefix(text) if hasattr(tokenizer,'prefix') else tokenizer.encode(text, add_special_tokens=False)
         return torch.tensor([values or [tokenizer.eos_token_id]], device=next(self.parameters()).device)
 
     def route(self, prompt):
@@ -214,7 +222,7 @@ class CFTN(nn.Module):
             wake, rounds, halt = self.dispatcher(self.coordinator.stable_features(self.ids(prompt)))
             probs = wake.sigmoid()[0]
             deps = self.dispatcher.dependencies(self.coordinator.stable_features(self.ids(prompt))).sigmoid()[0]
-            selected = [i for i in range(12) if probs[i] >= self.config.threshold]
+            selected = [i for i in range(12) if TOWERS[i] in self.config.active and probs[i] >= self.config.threshold]
             calls = [Call(TOWERS[i], int(rounds[0, i].argmax()), prompt,
                           tuple(TOWERS[j] for j in selected if j != i and deps[i,j] >= self.config.threshold)) for i in selected]
             confidence = min([float(probs[TOWERS.index(c.tower)]) for c in calls], default=1.0)
@@ -222,6 +230,8 @@ class CFTN(nn.Module):
 
     def communicate(self, prompt, plan, disabled=(), shuffle=False):
         # Request and return messages never see teacher-forced target tokens.
+        plan.validate(TOWERS)
+        self.last_execution_trace=[]
         prompt_ids = self.ids(prompt)
         workspace = self.coordinator.hidden(prompt_ids, adapters=False)
         messages = []
@@ -231,6 +241,8 @@ class CFTN(nn.Module):
                 if call.round != round_id or call.tower in disabled:
                     continue
                 name = call.tower
+                self.last_execution_trace.append({'tower':name,'round':round_id,'request':call.request,
+                    'depends_on':list(call.depends_on)})
                 bridge, tower = self.bridges[name], self.towers[name]
                 request = bridge['request'](workspace)
                 native = tower.hidden(self.ids(call.request, name), message=request, receiver=bridge['receiver'])
@@ -244,6 +256,10 @@ class CFTN(nn.Module):
     @torch.no_grad()
     def generate(self, prompt, tower=None, max_tokens=128, plan=None, disabled=(), shuffle=False):
         self.eval()
+        self.last_execution_trace=[]
+        if tower in self.config.specialist_specs:
+            self.last_execution_trace=[{'tower':tower,'round':0,'request':prompt.rstrip('\n'),'depends_on':[]}]
+            return self.towers[tower].generate(prompt.rstrip('\n'),max_tokens)[0]
         tokenizer = self.tokenizer_for(tower) if tower else self.tokenizer
         ids = self.ids(prompt, tower)
         prefix = ids.shape[1]

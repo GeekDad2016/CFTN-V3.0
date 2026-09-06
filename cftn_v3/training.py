@@ -38,7 +38,7 @@ def configure_update(model, plan):
 
 def supervised_loss(model, row, tower=None, messages=()):
     tokenizer = model.tokenizer_for(tower) if tower else model.tokenizer
-    prefix = tokenizer.encode(row['prompt']+'\n', add_special_tokens=False)
+    prefix = tokenizer.prefix(row['prompt']) if hasattr(tokenizer,'prefix') else tokenizer.encode(row['prompt']+'\n', add_special_tokens=False)
     target = tokenizer.encode(row['target'], add_special_tokens=False)+[tokenizer.eos_token_id]
     device = next(model.parameters()).device
     ids = torch.tensor([prefix+target], device=device)
