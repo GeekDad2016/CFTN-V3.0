@@ -41,3 +41,7 @@ The stronger split audit groups `add(left,right)` with `add(operands)` and commu
 The pipeline and artifacts use `G:/ctfn-text/artifacts/v3_curriculum_v3`. The dashboard on port 8792 follows that pipeline's current specialist. Its displayed learning rate, round budget, attempt limit and example budget come from live policy metadata.
 
 String remains queued, using its existing audited native dataset. It starts only after Maths passes and releases the GPU. No coordinator or unrelated tower is loaded for local Maths training.
+
+## Windows file-lock recovery
+
+A Windows access-denied error while replacing `status.json` interrupted the run during round 4. The saved checkpoint retained round 4, cursor 100, the optimizer and RNG states. Atomic writes now use unique temporary files and bounded retries for sharing conflicts, including checkpoint publication. The dashboard retries transient read conflicts. If the primary status file remains locked, status publication falls back to `status_fallback.json` without terminating training; the dashboard selects the newest timestamp and displays a warning. Disk-full and actual checkpoint failures still propagate rather than being silently ignored. A failed replacement preserves the previous complete checkpoint.

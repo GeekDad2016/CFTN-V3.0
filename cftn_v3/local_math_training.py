@@ -14,12 +14,13 @@ from torch.nn import functional as F
 from .config import canonical,identity
 from .data import file_hash
 from .local_specialist import LocalMathTower,MathTokenizer,load_legacy,load_specialist,save_specialist
+from .file_io import atomic_json
 
 PHASES=('multiply','power','pythagoras','fraction_add','percent_of','divide','linear_solve')
 
 
 def atomic(path,value):
-    temp=path.with_suffix('.tmp');temp.write_text(canonical(value),encoding='utf-8');temp.replace(path)
+    atomic_json(path,value)
 
 
 def semantic(ir):

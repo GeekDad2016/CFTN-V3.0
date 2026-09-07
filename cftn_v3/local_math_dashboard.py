@@ -5,6 +5,7 @@ import time
 import os
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
+from .file_io import read_text_retry
 
 def process_alive(pid):
     if not pid:return False
@@ -28,7 +29,7 @@ def snapshot(root):
     """Read saved evidence without importing a model or touching the GPU."""
     errors=[]
     def read(path):
-        try:return json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+        try:return json.loads(read_text_retry(path)) if path.exists() else {}
         except (OSError,ValueError) as exc:
             errors.append(f'{path.name}: {exc}');return {}
     queue=read(root/'queue.json')
@@ -38,6 +39,9 @@ def snapshot(root):
     reports=[read(f) for f in sorted(root.glob('*_epoch_*.json'),key=lambda p:p.stat().st_mtime)]
     reports=[r for r in reports if 'active' in r and 'retention' in r]
     status=read(root/'status.json')
+    fallback=read(root/'status_fallback.json')
+    if fallback.get('updated',0)>status.get('updated',0):status=fallback
+    if status.get('status_warning'):errors.append(status['status_warning'])
     alive=process_alive(status.get('pid'))
     if status.get('state') in ('training','remediating','evaluating','starting','evaluated') and not alive:
         status={**status,'state':'failed','error':'Training worker is no longer running. Saved results are shown; inspect the worker log before resuming.'}

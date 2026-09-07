@@ -13,6 +13,7 @@ from .full_curriculum_data import verify_manifest
 from .local_math_training import atomic,batch_loss,read
 from .local_specialist import MathTokenizer,load_specialist,save_specialist
 from .math_procedures import score
+from .file_io import StatusPublisher
 
 def panel(rows,per_criterion):
     groups=collections.defaultdict(dict)
@@ -70,9 +71,9 @@ def run(args):
     # One lock shared by every local native specialist in this pipeline.
     lock=out.parent/'native_training.lock';fd=os.open(lock,os.O_CREAT|os.O_EXCL|os.O_WRONLY)
     os.write(fd,canonical({'pid':os.getpid(),'output':str(out)}).encode());os.close(fd)
-    current={};started=time.time()
+    current={};started=time.time();publisher=StatusPublisher(out/'status.json')
     def status(**kw):
-        current.update(kw);atomic(out/'status.json',{'pid':os.getpid(),'updated':time.time(),'elapsed_seconds':time.time()-started,**current})
+        current.update(kw);publisher({'pid':os.getpid(),'updated':time.time(),'elapsed_seconds':time.time()-started,**current})
     try:
         if not torch.cuda.is_available():raise RuntimeError('CUDA required for the local training run')
         manifest=verify_manifest(data);digest=file_hash(data/'manifest.json');atomic(out/'curriculum.json',manifest)
@@ -95,6 +96,7 @@ def run(args):
         status(state='starting',phase='curriculum validation',source=str(args.initial_checkpoint),dataset=str(data),
             parameters=sum(p.numel() for p in model.parameters()),gpu=torch.cuda.get_device_name(),
             checkpoint=str(latest),completed=completed,epochs=maxround,policy=policy,
+            resumed=resumed,resume_round=start_round,resume_cursor=cursor,
             queue='String is waiting for Maths acceptance and GPU release')
         def save(index,round_,cursor_=0,**extra):
             nonlocal meta
