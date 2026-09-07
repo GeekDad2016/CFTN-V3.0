@@ -87,8 +87,9 @@ def load_legacy(checkpoint,spec):
 def save_specialist(path,model,metadata,optimizer=None):
     path=Path(path);path.parent.mkdir(parents=True,exist_ok=True)
     temporary=path.with_suffix('.tmp')
-    torch.save({'format':'cftn_native_specialist_v1','tower':'math','tokenizer':'legacy_math_bytes_260',
-        'interface':'typed_math_ir_v1','spec':model.spec,
+    tower=metadata.get('tower','math')
+    torch.save({'format':'cftn_native_specialist_v1','tower':tower,'tokenizer':'legacy_math_bytes_260',
+        'interface':'typed_string_ir_v1' if tower=='string' else 'typed_math_ir_v1','spec':model.spec,
         'weights':{k:v.detach().cpu().clone() for k,v in model.state_dict().items()},
         'metadata':metadata,'optimizer':optimizer.state_dict() if optimizer else None,
         'torch_rng':torch.get_rng_state(),'cuda_rng':torch.cuda.get_rng_state_all() if torch.cuda.is_available() else []},temporary)
@@ -114,7 +115,7 @@ def install_specialist(model,path,allow_experimental=False):
     model.bridges[name]=nn.ModuleDict({'request':Bridge(model.coordinator.width,specialist.width,model.config.message_tokens),
         'return':Bridge(specialist.width,model.coordinator.width,model.config.message_tokens),
         'receiver':Receiver(specialist.width)}).to(device=device,dtype=dtype)
-    model.config.specialist_specs[name]={'kind':'legacy_math_v12','spec':saved['spec'],
+    model.config.specialist_specs[name]={'kind':'legacy_string_v13' if name=='string' else 'legacy_math_v12','spec':saved['spec'],
         'sha256':file_hash(Path(path)),'interface':saved['interface'],'metadata':saved['metadata']}
     # Fresh bridges are untrained. Native readiness never activates coordinated inference.
     model.config.active=tuple(t for t in model.config.active if t!=name)

@@ -1,0 +1,7 @@
+{
+  "root": "G:/ctfn-text/artifacts/v3_curriculum_v2",
+  "queue": [
+    {"tower": "math", "data": "G:/ctfn-text/data/v3_full_math_v2", "output": "G:/ctfn-text/artifacts/v3_curriculum_v2/math", "initial_checkpoint": "G:/ctfn-text/artifacts/v3_local_math_v1/current.specialist"},
+    {"tower": "string", "data": "G:/ctfn-text/data/v3_string_v2", "output": "G:/ctfn-text/artifacts/v3_curriculum_v2/string", "initial_checkpoint": "G:/ctfn-text/data/v3_string_v2/initial.specialist"}
+  ]
+}

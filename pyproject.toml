@@ -20,7 +20,7 @@ cftn = "cftn_v3.cli:main"
 include = ["cftn_v3*"]
 
 [tool.setuptools.package-data]
-cftn_v3 = ["dashboard.html"]
+cftn_v3 = ["dashboard.html", "local_math_dashboard.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

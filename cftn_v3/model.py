@@ -195,7 +195,7 @@ class CFTN(nn.Module):
             "small" if name == "string" and config.profile != "tiny" else config.profile,
             config.long_context if name == "long_context" else config.context) for name in TOWERS})
         for name,spec in config.specialist_specs.items():
-            if spec['kind']!='legacy_math_v12' or name!='math':raise ValueError('unsupported native specialist')
+            if (name,spec['kind']) not in (('math','legacy_math_v12'),('string','legacy_string_v13')):raise ValueError('unsupported native specialist')
             from .local_specialist import LocalMathTower
             self.towers[name]=LocalMathTower(spec['spec'])
         cw = self.coordinator.width
