@@ -49,8 +49,20 @@ def snapshot(root):
     for key in ('epoch','loss','phase'):
         if key not in status and key in latest:status[key]=latest[key]
     checkpoint=root/'current.specialist'
+    before=read(root/(status.get('phase','baseline')+'_before.json'))
+    observation=latest or before
+    criterion_details=[]
+    for kind in ('active','retention'):
+        report=observation.get(kind,{})
+        for name,metrics in report.get('criteria',{}).items():
+            minimum=max(.95,before.get('retention',{}).get('criteria',{}).get(name,{}).get('accuracy',0)) if kind=='retention' else .95
+            passed=bool(metrics.get('examples',0) and metrics.get('accuracy',0)>=minimum
+                and metrics.get('format_accuracy',0)>=.95 and (kind=='retention' or metrics.get('trace_accuracy',0)>=.90))
+            criterion_details.append({'name':name,'kind':kind,'metrics':metrics,'passed':passed,
+                'answer_threshold':minimum,'round':latest.get('epoch'),
+                'samples':[r for r in report.get('samples',[]) if r.get('criterion')==name]})
     return {'status':status,'overfit':read(root/'overfit_test.json'),'queue':queue,
-        'curriculum':read(root/'curriculum.json'),'before':read(root/(status.get('phase','baseline')+'_before.json')),
+        'curriculum':read(root/'curriculum.json'),'before':before,'criterion_details':criterion_details,
         'history':[{**r,'active':{k:v for k,v in r['active'].items() if k!='samples'},
             'retention':{k:v for k,v in r['retention'].items() if k!='samples'}} for r in reports],
         'samples':latest.get('active',read(root/(status.get('phase','baseline')+'_before.json')).get('active',read(root/'baseline.json'))).get('samples',[])[:16],
