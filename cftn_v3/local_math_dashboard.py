@@ -58,6 +58,8 @@ def snapshot(root):
             minimum=max(.95,before.get('retention',{}).get('criteria',{}).get(name,{}).get('accuracy',0)) if kind=='retention' else .95
             passed=bool(metrics.get('examples',0) and metrics.get('accuracy',0)>=minimum
                 and metrics.get('format_accuracy',0)>=.95 and (kind=='retention' or metrics.get('trace_accuracy',0)>=.90))
+            passed=passed and all(m.get('accuracy',0)>=.95 and m.get('format_accuracy',0)>=.95
+                and (kind=='retention' or m.get('trace_accuracy',0)>=.90) for m in metrics.get('strata',{}).values())
             criterion_details.append({'name':name,'kind':kind,'metrics':metrics,'passed':passed,
                 'answer_threshold':minimum,'round':latest.get('epoch'),
                 'samples':[r for r in report.get('samples',[]) if r.get('criterion')==name]})

@@ -16,9 +16,13 @@ def run(config):
         for item in cfg['queue']:
             out=Path(item['output']);out.mkdir(parents=True,exist_ok=True)
             atomic(root/'queue.json',{'state':'running','current':item['tower'],'output':str(out),'pid':os.getpid(),'queue':cfg['queue'],'updated':time.time()})
-            command=[sys.executable,'-u','-m','cftn_v3.full_curriculum_training','--data',item['data'],'--output',str(out),'--initial-checkpoint',item['initial_checkpoint']]
+            trainer=item.get('trainer','standard')
+            if trainer not in ('standard','criterion'):raise ValueError('Unknown trainer')
+            module='cftn_v3.criterion_curriculum_training' if trainer=='criterion' else 'cftn_v3.full_curriculum_training'
+            command=[sys.executable,'-u','-m',module,'--data',item['data'],'--output',str(out),'--initial-checkpoint',item['initial_checkpoint']]
+            if item.get('inherit_progress'):command.append('--inherit-progress')
             for key,value in item.get('policy',{}).items():
-                if key not in ('normal_rounds','remediation_rounds','attempts','examples','lr','validation_examples','retention_examples'):
+                if key not in ('normal_rounds','remediation_rounds','attempts','examples','lr','validation_examples','retention_examples','consolidation_rounds'):
                     raise ValueError('Unknown training policy setting: '+key)
                 command.extend(['--'+key.replace('_','-'),str(value)])
             with (out/'training.stdout.log').open('a') as stdout,(out/'training.stderr.log').open('a') as stderr:
