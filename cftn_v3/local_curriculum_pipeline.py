@@ -17,6 +17,10 @@ def run(config):
             out=Path(item['output']);out.mkdir(parents=True,exist_ok=True)
             atomic(root/'queue.json',{'state':'running','current':item['tower'],'output':str(out),'pid':os.getpid(),'queue':cfg['queue'],'updated':time.time()})
             command=[sys.executable,'-u','-m','cftn_v3.full_curriculum_training','--data',item['data'],'--output',str(out),'--initial-checkpoint',item['initial_checkpoint']]
+            for key,value in item.get('policy',{}).items():
+                if key not in ('normal_rounds','remediation_rounds','attempts','examples','lr','validation_examples','retention_examples'):
+                    raise ValueError('Unknown training policy setting: '+key)
+                command.extend(['--'+key.replace('_','-'),str(value)])
             with (out/'training.stdout.log').open('a') as stdout,(out/'training.stderr.log').open('a') as stderr:
                 result=subprocess.run(command,stdout=stdout,stderr=stderr)
             status=json.loads((out/'status.json').read_text()) if (out/'status.json').exists() else {}

@@ -1,5 +1,7 @@
 # Full local curriculum repair
 
+This describes the historical v2 run. The current continuation is documented in [Foundation expansion and longer training](foundation_expansion_v3.md), with a new versioned dataset, a lower learning rate and larger budgets.
+
 The earlier seven-topic repair run stopped without acceptance. This release uses its compatible saved weights, but resets curriculum acceptance and optimizer state because the supervision has changed. It revalidates and trains from stage zero. Future-stage knowledge in the inherited weights is not evidence of mastery under the new contract.
 
 ## Data
@@ -12,7 +14,7 @@ The added tasks include general rational quadratics, degree 2–4 polynomial dif
 
 ## Training and acceptance
 
-Run `scripts/start_local_curriculum.ps1`. It refuses duplicate local workers. A detached pipeline uses `config/local_curriculum_v2.json`. Data and artifacts live on G:. Only one native specialist is loaded, with no coordinator or other specialists running.
+The historical configuration is `config/local_curriculum_v2.json`; the launcher now defaults to the newer v3 configuration. It refuses duplicate local workers. Data and artifacts live on G:. Only one native specialist is loaded, with no coordinator or other specialists running.
 
 Each round samples 2,048 examples: 75% active-stage and 25% criterion-balanced replay from previously accepted stages. Stage zero uses only active data. Length bucketing limits padding. The learning rate is 5e-5. Eight normal rounds are followed, if necessary, by up to three six-round remediation attempts. Remediation draws from stage-specific, training-only short-procedure pools and full active problems; prior-skill failures also receive targeted replay. No validation/test questions enter the training batch.
 

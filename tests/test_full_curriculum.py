@@ -115,3 +115,35 @@ def test_failed_worker_never_hands_off_to_next_tower(tmp_path,monkeypatch):
     monkeypatch.setattr(p.subprocess,'run',lambda *a,**k:(calls.append(a),SimpleNamespace(returncode=0))[1])
     p.run(path);assert len(calls)==1
     assert json.loads((tmp_path/'queue.json').read_text())['state']=='blocked'
+
+def test_equivalent_arithmetic_has_one_split_group():
+    from cftn_v3.expand_foundations import group_id
+    assert group_id({'op':'add','left':1,'right':7})==group_id({'op':'add','operands':[7,1]})
+    assert group_id({'op':'multiply','left':2,'right':9})==group_id({'op':'multiply','left':9,'right':2})
+    assert group_id({'op':'subtract','left':2,'right':9})!=group_id({'op':'subtract','left':9,'right':2})
+    a=make({'op':'add','left':1,'right':7},0,'addition');b=make({'op':'add','operands':[7,1]},0,'addition')
+    a['split_group_id']=b['split_group_id']=group_id(a['ir'])
+    assert len(panel([a,b],32))==1
+
+def test_foundation_extensions_respect_ranges_and_answers():
+    from cftn_v3.expand_foundations import candidates
+    checked=set()
+    for stage,criterion,ir in candidates():
+        answer,_=solve(ir);op=ir['op']
+        if stage==0:assert sum(ir['operands'])<=20
+        if stage==1 and op=='compare_expressions':
+            values=[]
+            for side in ['left','right']:
+                a,b=ir[side];value=a+b if ir[side+'_op']=='add' else a-b
+                assert 0<=value<=20;values.append(value)
+            a,b=values;assert answer==('<' if a<b else '>' if a>b else '=')
+        if op=='missing_subtrahend':assert ir['left']-int(answer)==ir['result']
+        if op=='missing_minuend':assert int(answer)-ir['right']==ir['result']
+        if op=='compose_place_value':assert int(answer)==10*ir['tens']+ir['ones']
+        if op=='compare_place_value':
+            a=10*ir['tens']+ir['ones'];b=ir['right'];assert answer==('<' if a<b else '>' if a>b else '=')
+        if stage==5:
+            assert 100<=ir['left']<=9999 and 100<=ir['right']<=9999
+            assert int(answer)==(ir['left']+ir['right'] if op=='add' else ir['left']-ir['right'])
+        checked.add((stage,criterion))
+    assert (5,'EXT-MULTI-DIGIT-SUBTRACT') in checked

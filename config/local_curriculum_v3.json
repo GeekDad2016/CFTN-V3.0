@@ -1,0 +1,19 @@
+{
+  "root": "G:/ctfn-text/artifacts/v3_curriculum_v3",
+  "queue": [
+    {
+      "tower": "math",
+      "data": "G:/ctfn-text/data/v3_full_math_v3",
+      "output": "G:/ctfn-text/artifacts/v3_curriculum_v3/math",
+      "initial_checkpoint": "G:/ctfn-text/artifacts/v3_curriculum_v2/math/current.specialist",
+      "policy": {"normal_rounds": 120, "remediation_rounds": 30, "attempts": 4, "examples": 4096, "lr": 0.00001, "validation_examples": 32, "retention_examples": 8}
+    },
+    {
+      "tower": "string",
+      "data": "G:/ctfn-text/data/v3_string_v2",
+      "output": "G:/ctfn-text/artifacts/v3_curriculum_v3/string",
+      "initial_checkpoint": "G:/ctfn-text/data/v3_string_v2/initial.specialist",
+      "policy": {"normal_rounds": 120, "remediation_rounds": 30, "attempts": 4, "examples": 4096, "lr": 0.00001, "validation_examples": 32, "retention_examples": 8}
+    }
+  ]
+}

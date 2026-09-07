@@ -48,6 +48,17 @@ def solve(ir):
         a,b=ir['left'],ir['right'];answer=eq(f'{n(a)}-{n(b)}',a-b)
         if op=='difference':answer=eq(f'abs({answer})',abs(answer))
     elif op=='missing_addend':answer=eq(f"{ir['total']}-{ir['known']}",ir['total']-ir['known'])
+    elif op=='missing_subtrahend':answer=eq(f"{ir['left']}-{ir['result']}",ir['left']-ir['result'])
+    elif op=='missing_minuend':answer=eq(f"{ir['result']}+{ir['right']}",ir['result']+ir['right'])
+    elif op=='compare_expressions':
+        values=[]
+        for side in ('left','right'):
+            a,b=ir[side];operator=ir[side+'_op'];values.append(eq(f'{a}{"+" if operator=="add" else "-"}{b}',a+b if operator=='add' else a-b))
+        a,b=values;answer=eq(f'cmp({a},{b})','<' if a<b else '>' if a>b else '=')
+    elif op=='compose_place_value':answer=eq(f"10*{ir['tens']}+{ir['ones']}",10*ir['tens']+ir['ones'])
+    elif op=='compare_place_value':
+        a=eq(f"10*{ir['tens']}+{ir['ones']}",10*ir['tens']+ir['ones']);b=ir['right']
+        answer=eq(f'cmp({a},{b})','<' if a<b else '>' if a>b else '=')
     elif op=='place_value':answer=eq(f"divmod({ir['value']},10)",list(divmod(ir['value'],10)))
     elif op=='neighbouring_tens':
         a=eq(f"10*floor({ir['value']}/10)",ir['value']//10*10);b=eq(f'{a}+10',a+10);answer=[a,b]

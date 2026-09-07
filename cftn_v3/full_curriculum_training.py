@@ -16,7 +16,7 @@ from .math_procedures import score
 
 def panel(rows,per_criterion):
     groups=collections.defaultdict(dict)
-    for r in rows:groups[r['criterion']][r['semantic_id']]=r
+    for r in rows:groups[r['criterion']][r.get('split_group_id',r['semantic_id'])]=r
     return [r for key in sorted(groups) for r in sorted(groups[key].values(),key=lambda r:r['semantic_id'])[:per_criterion]]
 
 def sample(rows,count,seed):
@@ -80,7 +80,9 @@ def run(args):
         latest=out/'current.specialist';model,saved=load_specialist(latest if latest.exists() else args.initial_checkpoint)
         tower=saved['tower'];resumed=latest.exists();meta=saved['metadata'] if resumed else {}
         policy={k:getattr(args,k) for k in ('normal_rounds','remediation_rounds','attempts','examples','lr')}
-        if resumed and (meta.get('dataset_hash')!=digest or meta.get('policy')!=policy):raise ValueError('Resume data or policy changed')
+        policy.update(validation_examples=getattr(args,'validation_examples',12),retention_examples=getattr(args,'retention_examples',4))
+        saved_policy={'validation_examples':12,'retention_examples':4,**meta.get('policy',{})}
+        if resumed and (meta.get('dataset_hash')!=digest or saved_policy!=policy):raise ValueError('Resume data or policy changed')
         if meta.get('accepted'):status(state='complete',accepted=True);return
         if meta.get('terminal'):status(state='blocked',reason=meta['terminal']);return
         model.to('cuda');torch.manual_seed(9307);torch.set_num_threads(4)
@@ -106,7 +108,7 @@ def run(args):
         for index in range(start_stage,len(manifest['stages'])):
             stage=manifest['stages'][index];phase=stage['name'];active=[r for r in train if r['stage']==index]
             prior=[r for r in train if r['stage']<index];validation=[r for r in dev if r['stage']==index]
-            active_panel=panel(validation,12);retention_panel=panel([r for r in dev if r['stage']<index],4)
+            active_panel=panel(validation,policy['validation_examples']);retention_panel=panel([r for r in dev if r['stage']<index],policy['retention_examples'])
             repair=read(data/stage['remediation']);entry_path=out/f'{phase}_before.json'
             status(phase=phase,stage_index=index,scope=stage['scope'],epoch=start_round if index==start_stage else 1,
                 stage_count=len(manifest['stages']),active_examples=len(active),completed=completed)
@@ -175,4 +177,5 @@ if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--data',required=True);p.add_argument('--output',required=True);p.add_argument('--initial-checkpoint',required=True)
     p.add_argument('--normal-rounds',type=int,default=8);p.add_argument('--remediation-rounds',type=int,default=6)
     p.add_argument('--attempts',type=int,default=3);p.add_argument('--examples',type=int,default=2048);p.add_argument('--lr',type=float,default=5e-5)
+    p.add_argument('--validation-examples',type=int,default=12);p.add_argument('--retention-examples',type=int,default=4)
     run(p.parse_args())
