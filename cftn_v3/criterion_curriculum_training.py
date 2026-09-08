@@ -139,12 +139,14 @@ def run(args):
                     'passed':passed,'consecutive':consecutive,'remediation_attempt':attempt,'failed_criteria':weak,
                     'retention_failed_criteria':retention_weak,'elapsed':time.time()-begun}
                 atomic(out/f'{phase}_epoch_{round_:03d}.json',report)
-                save(index,round_+1);status(state='evaluated',passed=passed,accuracy=observed['accuracy'],retention=retained['accuracy'])
+                save(index,round_+1);status(state='evaluated',passed=passed,accuracy=observed['accuracy'],retention=retained['accuracy'],consolidation_done=controller.state['consolidation_done'])
                 if gate:
                     full=ev(panel(validation,100000),'complete stage validation')
                     cumulative=ev(panel([r for r in dev if r['stage']<index],12),'complete retention gate')
                     full_fail=failed_criteria(full);cum_fail=failed_criteria(cumulative,True)
-                    atomic(out/f'{phase}_promotion_validation.json',{'active':full,'retention':cumulative,'passed':not full_fail and not cum_fail})
+                    atomic(out/f'{phase}_promotion_validation.json',{'phase':phase,'epoch':round_,'updated':time.time(),'active':full,'retention':cumulative,'passed':not full_fail and not cum_fail})
+                    status(promotion_passed=not full_fail and not cum_fail,promotion_failed_criteria=full_fail,
+                        promotion_retention_failed_criteria=cum_fail)
                     if not full_fail and not cum_fail:
                         completed.append(phase);consecutive=0;weak=[];retention_weak=[]
                         controller=RepairController(args.normal_rounds,args.remediation_rounds,args.attempts,args.consolidation_rounds)

@@ -48,26 +48,42 @@ def snapshot(root):
     latest=next((r for r in reversed(reports) if r.get('phase')==status.get('phase')),reports[-1] if not status.get('phase') and reports else {})
     for key in ('epoch','loss','phase'):
         if key not in status and key in latest:status[key]=latest[key]
+    if latest.get('epoch')==status.get('epoch') and latest.get('controller'):
+        status={**status,'consolidation_done':latest['controller'].get('consolidation_done',status.get('consolidation_done',0))}
     checkpoint=root/'current.specialist'
     before=read(root/(status.get('phase','baseline')+'_before.json'))
-    observation=latest or before
+    promotion_path=root/(status.get('phase','baseline')+'_promotion_validation.json')
+    promotion=read(promotion_path)
+    # A routine panel must never overwrite the evidence used for promotion.
+    observation=promotion or latest or before
+    evidence_kind='Full promotion check' if promotion else 'Routine validation' if latest else 'Stage baseline'
+    evidence_round=promotion.get('epoch') if promotion else latest.get('epoch')
+    if promotion and evidence_round is None and promotion_path.exists():
+        prior_reports=[r for r in reports if r.get('phase')==status.get('phase') and
+            (root/f"{r['phase']}_epoch_{r['epoch']:03d}.json").stat().st_mtime<=promotion_path.stat().st_mtime]
+        evidence_round=prior_reports[-1]['epoch'] if prior_reports else None
     criterion_details=[]
     for kind in ('active','retention'):
         report=observation.get(kind,{})
         for name,metrics in report.get('criteria',{}).items():
-            minimum=max(.95,before.get('retention',{}).get('criteria',{}).get(name,{}).get('accuracy',0)) if kind=='retention' else .95
+            minimum=max(.95,before.get('retention',{}).get('criteria',{}).get(name,{}).get('accuracy',0)) if kind=='retention' and not promotion else .95
             passed=bool(metrics.get('examples',0) and metrics.get('accuracy',0)>=minimum
                 and metrics.get('format_accuracy',0)>=.95 and (kind=='retention' or metrics.get('trace_accuracy',0)>=.90))
             passed=passed and all(m.get('accuracy',0)>=.95 and m.get('format_accuracy',0)>=.95
                 and (kind=='retention' or m.get('trace_accuracy',0)>=.90) for m in metrics.get('strata',{}).values())
             criterion_details.append({'name':name,'kind':kind,'metrics':metrics,'passed':passed,
-                'answer_threshold':minimum,'round':latest.get('epoch'),
+                'answer_threshold':minimum,'round':evidence_round,'evidence_kind':evidence_kind,
                 'samples':[r for r in report.get('samples',[]) if r.get('criterion')==name]})
     return {'status':status,'overfit':read(root/'overfit_test.json'),'queue':queue,
+        'display_evaluation':{'kind':evidence_kind,'epoch':evidence_round,
+            'active':{k:v for k,v in observation.get('active',{}).items() if k!='samples'},
+            'retention':{k:v for k,v in observation.get('retention',{}).items() if k!='samples'},
+            'passed':observation.get('passed')},
+        'routine_evaluation':{k:v for k,v in latest.items() if k in ('epoch','passed')},
         'curriculum':read(root/'curriculum.json'),'before':before,'criterion_details':criterion_details,
         'history':[{**r,'active':{k:v for k,v in r['active'].items() if k!='samples'},
             'retention':{k:v for k,v in r['retention'].items() if k!='samples'}} for r in reports],
-        'samples':latest.get('active',read(root/(status.get('phase','baseline')+'_before.json')).get('active',read(root/'baseline.json'))).get('samples',[])[:16],
+        'samples':sorted(observation.get('active',{}).get('samples',[]),key=lambda r:bool(r.get('answer_correct') and r.get('trace_correct')))[:16],
         'worker_alive':alive,
         'errors':errors,'root':str(root),'server_time':time.time(),
         'checkpoint':{'path':str(checkpoint),'exists':checkpoint.exists(),
