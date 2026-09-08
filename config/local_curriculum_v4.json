@@ -9,7 +9,7 @@
       "output": "G:/ctfn-text/artifacts/v3_curriculum_v4/math",
       "initial_checkpoint": "G:/ctfn-text/artifacts/v3_curriculum_v3/math/current.specialist",
       "policy": {
-        "normal_rounds": 120,
+        "normal_rounds": 240,
         "remediation_rounds": 30,
         "attempts": 4,
         "examples": 4096,
@@ -20,7 +20,7 @@
         "stage_rounds": 240,
         "full_check_every": 20
       },
-      "upgrade_recovery": true
+      "stage_first": true
     },
     {
       "tower": "string",
@@ -29,7 +29,7 @@
       "output": "G:/ctfn-text/artifacts/v3_curriculum_v4/string",
       "initial_checkpoint": "G:/ctfn-text/data/v3_string_v3/initial.specialist",
       "policy": {
-        "normal_rounds": 120,
+        "normal_rounds": 240,
         "remediation_rounds": 30,
         "attempts": 4,
         "examples": 4096,
@@ -39,7 +39,8 @@
         "consolidation_rounds": 3,
         "stage_rounds": 240,
         "full_check_every": 20
-      }
+      },
+      "stage_first": true
     }
   ]
 }

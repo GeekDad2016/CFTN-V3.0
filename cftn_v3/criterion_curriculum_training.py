@@ -15,7 +15,8 @@ from .local_specialist import MathTokenizer,load_specialist,save_specialist
 from .math_procedures import score
 from .file_io import StatusPublisher
 from .criterion_sampling import balanced_panel as panel
-from .criterion_repair import ScheduledRepairController as RepairController, failures, add_strata
+from .criterion_repair import failures, add_strata
+from .stage_first_repair import StageFirstController as RepairController
 
 from .full_curriculum_training import evaluate as raw_evaluate
 
@@ -59,22 +60,25 @@ def run(args):
         policy.update(stage_rounds=getattr(args,'stage_rounds',240),full_check_every=getattr(args,'full_check_every',20))
         policy.update(validation_examples=getattr(args,'validation_examples',12),retention_examples=getattr(args,'retention_examples',4))
         saved_policy={'validation_examples':12,'retention_examples':4,**meta.get('policy',{})}
-        upgrading=resumed and meta.get('controller_version')==1 and getattr(args,'upgrade_recovery',False)
+        upgrading=resumed and meta.get('controller_version')==2 and getattr(args,'stage_first',False)
         if upgrading:
-            if meta.get('dataset_hash')!=digest or any(saved_policy.get(k)!=v for k,v in policy.items() if k not in ('stage_rounds','full_check_every')):
-                raise ValueError('Recovery migration must preserve dataset and optimization policy')
-            if (out/'sealed_test_started.json').exists() or (meta.get('terminal') and not meta['terminal'].startswith('Repair attempt budget exhausted')):
-                raise ValueError('Recovery migration cannot reopen sealed tests or unrelated failures')
+            if meta.get('dataset_hash')!=digest or any(saved_policy.get(k)!=policy[k] for k in ('examples','lr','validation_examples','retention_examples')):
+                raise ValueError('Stage-first migration must preserve data and optimizer settings')
+            if (out/'sealed_test_started.json').exists() or meta.get('terminal'):
+                raise ValueError('Cannot migrate a terminal or sealed run')
+            if meta.get('cursor',0):raise ValueError('Stage-first migration requires a round-boundary checkpoint')
             import shutil
-            backup=out/'before_scheduled_recovery.specialist'
+            backup=out/'before_stage_first.specialist'
             if not backup.exists():shutil.copy2(latest,backup)
-            meta.pop('terminal',None)
-            migrated=RepairController(state=meta.get('controller'))
-            migrated.state.update(full_streak=0,full_pass_round=None)
-            migrated.focus(meta.get('weak',[]),meta.get('retention_weak',[]))
-            meta['controller']=migrated.state
-            atomic(out/'recovery_policy_migration.json',{'old_policy':saved_policy,'new_policy':policy,'resume_round':meta['round'],'backup':str(backup),'updated':time.time()})
-        elif resumed and (meta.get('dataset_hash')!=digest or saved_policy!=policy or meta.get('controller_version')!=2):raise ValueError('Resume data or policy changed')
+            old_round=meta['round'];idx=meta['stage_index'];phase=manifest['stages'][idx]['name']
+            history=[json.loads(p.read_text()) for p in out.glob(phase+'_epoch_*.json')]
+            normal_count=sum(r.get('training_mode')!='repair' for r in history if r['epoch']<old_round)
+            repair_count=sum(r.get('training_mode')=='repair' for r in history if r['epoch']<old_round)
+            fresh=RepairController(args.normal_rounds,args.remediation_rounds,args.attempts,args.consolidation_rounds)
+            fresh.state.update(normal_done=normal_count,normal_total=normal_count,recovery_total=repair_count,legacy_recovery=repair_count)
+            meta['controller']=fresh.state
+            atomic(out/'stage_first_migration.json',{'resume_round':old_round,'normal_completed':normal_count,'recovery_completed':repair_count,'old_policy':saved_policy,'new_policy':policy,'backup':str(backup)})
+        elif resumed and (meta.get('dataset_hash')!=digest or saved_policy!=policy or meta.get('controller_version')!=3):raise ValueError('Resume data or policy changed')
         if meta.get('accepted'):status(state='complete',accepted=True);return
         if meta.get('terminal'):status(state='blocked',reason=meta['terminal']);return
         model.to('cuda');torch.manual_seed(9307);torch.set_num_threads(4)
@@ -83,20 +87,20 @@ def run(args):
             optimizer.load_state_dict(saved['optimizer']);torch.set_rng_state(saved['torch_rng']);torch.cuda.set_rng_state_all(saved['cuda_rng'])
         completed=meta.get('completed',[]);start_stage=meta.get('stage_index',0);start_round=meta.get('round',1)
         cursor=meta.get('cursor',0);consecutive=meta.get('consecutive',0);weak=meta.get('weak',[]);retention_weak=meta.get('retention_weak',[])
-        maxround=policy['stage_rounds']
+        maxround=args.normal_rounds*(args.attempts+1)+args.remediation_rounds*args.attempts+meta.get('controller',{}).get('legacy_recovery',0)
         if maxround<1 or policy['full_check_every']<1:raise ValueError('Round budgets must be positive')
         controller=RepairController(args.normal_rounds,args.remediation_rounds,args.attempts,args.consolidation_rounds,meta.get('controller'))
         status(state='starting',phase='curriculum validation',source=str(args.initial_checkpoint),dataset=str(data),
             parameters=sum(p.numel() for p in model.parameters()),gpu=torch.cuda.get_device_name(),
             checkpoint=str(latest),completed=completed,epochs=maxround,policy=policy,
             resumed=resumed,resume_round=start_round,resume_cursor=cursor,
-            inherited_progress=inherited,controller_version=2,
+            inherited_progress=inherited,controller_version=3,
             queue='String is waiting for Maths acceptance and GPU release')
         def save(index,round_,cursor_=0,**extra):
             nonlocal meta
             meta={'tower':tower,'accepted':False,'dataset_hash':digest,'policy':policy,'stage_index':index,'round':round_,
                 'cursor':cursor_,'completed':completed,'consecutive':consecutive,'weak':weak,'retention_weak':retention_weak,
-                'source_checkpoint':str(args.initial_checkpoint),'controller':controller.state,'controller_version':2,**extra}
+                'source_checkpoint':str(args.initial_checkpoint),'controller':controller.state,'controller_version':3,**extra}
             save_specialist(latest,model,meta,optimizer)
         def ev(rows,label):
             status(state='evaluating',evaluation=label,evaluation_done=0,evaluation_total=len(rows))
@@ -116,7 +120,6 @@ def run(args):
                 atomic(entry_path,entry)
             if inherited and index==start_stage:
                 weak=failed_criteria(entry['active']);retention_weak=failed_criteria(entry['retention'],True)
-                controller.focus(weak,retention_weak)
                 inherited=False
                 save(index,start_round)
             if upgrading and index==start_stage:save(index,start_round,cursor)
@@ -126,6 +129,8 @@ def run(args):
                 status(epoch=round_,remediation_attempt=attempt,remediation_criteria=[focus] if mode=='repair' else weak,
                     training_mode=mode,focused_criterion=focus if mode=='repair' else None,
                     consolidation_done=controller.state['consolidation_done'],step=cursor,
+                    normal_done=controller.state['normal_done'],normal_total=controller.state.get('normal_total',0),
+                    recovery_total=controller.state.get('recovery_total',0),recovery_blocks=controller.state.get('recovery_blocks',0),
                     next_full_check=controller.next_check(round_,policy['full_check_every'],maxround),
                     full_consecutive=controller.state.get('full_streak',0))
                 seed=9307+index*100000+round_
@@ -164,7 +169,9 @@ def run(args):
                     full=ev(panel(validation,100000),'complete stage validation')
                     cumulative=ev(panel([r for r in dev if r['stage']<index],100000),'complete retention gate')
                     full_fail=failed_criteria(full);cum_fail=failed_criteria(cumulative,True)
-                    promoted=controller.full_result(round_,full_fail,cum_fail)
+                    try:promoted=controller.full_result(round_,full_fail,cum_fail)
+                    except RuntimeError as exc:
+                        save(index,round_+1,terminal=str(exc));status(state='blocked',reason=str(exc));return
                     atomic(out/f'{phase}_promotion_validation.json',{'phase':phase,'epoch':round_,'updated':time.time(),'active':full,'retention':cumulative,'passed':not full_fail and not cum_fail,'full_consecutive':controller.state.get('full_streak',0),'promoted':promoted})
                     status(promotion_passed=not full_fail and not cum_fail,promotion_failed_criteria=full_fail,
                         promotion_retention_failed_criteria=cum_fail)
@@ -198,6 +205,7 @@ if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--data',required=True);p.add_argument('--output',required=True);p.add_argument('--initial-checkpoint',required=True)
     p.add_argument('--normal-rounds',type=int,default=8);p.add_argument('--remediation-rounds',type=int,default=6)
     p.add_argument('--attempts',type=int,default=3);p.add_argument('--examples',type=int,default=2048);p.add_argument('--lr',type=float,default=5e-5)
+    p.add_argument('--stage-first',action='store_true')
     p.add_argument('--stage-rounds',type=int,default=240);p.add_argument('--full-check-every',type=int,default=20);p.add_argument('--upgrade-recovery',action='store_true')
     p.add_argument('--inherit-progress',action='store_true');p.add_argument('--consolidation-rounds',type=int,default=3)
     p.add_argument('--validation-examples',type=int,default=12);p.add_argument('--retention-examples',type=int,default=4)
