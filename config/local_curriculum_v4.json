@@ -2,18 +2,44 @@
   "root": "G:/ctfn-text/artifacts/v3_curriculum_v4",
   "queue": [
     {
-      "tower": "math", "trainer": "criterion", "inherit_progress": true,
+      "tower": "math",
+      "trainer": "criterion",
+      "inherit_progress": true,
       "data": "G:/ctfn-text/data/v3_full_math_v4",
       "output": "G:/ctfn-text/artifacts/v3_curriculum_v4/math",
       "initial_checkpoint": "G:/ctfn-text/artifacts/v3_curriculum_v3/math/current.specialist",
-      "policy": {"normal_rounds":120,"remediation_rounds":30,"attempts":4,"examples":4096,"lr":0.00001,"validation_examples":32,"retention_examples":8,"consolidation_rounds":3}
+      "policy": {
+        "normal_rounds": 120,
+        "remediation_rounds": 30,
+        "attempts": 4,
+        "examples": 4096,
+        "lr": 1e-05,
+        "validation_examples": 32,
+        "retention_examples": 8,
+        "consolidation_rounds": 3,
+        "stage_rounds": 240,
+        "full_check_every": 20
+      },
+      "upgrade_recovery": true
     },
     {
-      "tower": "string", "trainer": "criterion",
+      "tower": "string",
+      "trainer": "criterion",
       "data": "G:/ctfn-text/data/v3_string_v3",
       "output": "G:/ctfn-text/artifacts/v3_curriculum_v4/string",
       "initial_checkpoint": "G:/ctfn-text/data/v3_string_v3/initial.specialist",
-      "policy": {"normal_rounds":120,"remediation_rounds":30,"attempts":4,"examples":4096,"lr":0.00001,"validation_examples":32,"retention_examples":8,"consolidation_rounds":3}
+      "policy": {
+        "normal_rounds": 120,
+        "remediation_rounds": 30,
+        "attempts": 4,
+        "examples": 4096,
+        "lr": 1e-05,
+        "validation_examples": 32,
+        "retention_examples": 8,
+        "consolidation_rounds": 3,
+        "stage_rounds": 240,
+        "full_check_every": 20
+      }
     }
   ]
 }

@@ -82,10 +82,10 @@ def test_runner_repair_consolidation_and_promotion(tmp_path,monkeypatch):
         return {**metric,'criteria':{'addition':metric} if rows else {},'samples':[]}
     monkeypatch.setattr(t,'evaluate',evaluate);saves=[]
     monkeypatch.setattr(t,'save_specialist',lambda p,m,meta,optimizer=None:saves.append(copy.deepcopy(meta)))
-    args=SimpleNamespace(output=str(tmp_path/'run'),data='unused',initial_checkpoint='unused',normal_rounds=3,remediation_rounds=10,attempts=1,examples=4,lr=.001,consolidation_rounds=3,inherit_progress=False)
+    args=SimpleNamespace(output=str(tmp_path/'run'),data='unused',initial_checkpoint='unused',normal_rounds=3,remediation_rounds=10,attempts=1,examples=4,lr=.001,consolidation_rounds=3,inherit_progress=False,stage_rounds=13,full_check_every=8)
     t.run(args)
     reports=[json.loads(p.read_text()) for p in sorted((tmp_path/'run').glob('*_epoch_*.json'))]
-    assert [r['training_mode'] for r in reports]==['normal']*3+['repair']*2+['consolidate']*3
+    assert [r['training_mode'] for r in reports]==['normal']*3+['repair']*2+['consolidate']*4
     assert saves[-1]['accepted'] and saves[-1]['completed']==['add']
     assert not (tmp_path/'native_training.lock').exists()
 

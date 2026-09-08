@@ -54,3 +54,25 @@ class RepairController:
             return BalancedSampler(pool).sample(count,seed)
         n=count*3//4 if prior else count
         return BalancedSampler(active).sample(n,seed)+BalancedSampler(prior).sample(count-n,seed+1)
+
+class ScheduledRepairController(RepairController):
+    """No attempt cutoff; full checks alone establish consecutive mastery."""
+    def focus(self,weak,retained):
+        names=weak or retained
+        if not names:return
+        name=names[0];counts=self.state['attempt_counts'];counts[name]=counts.get(name,0)+1
+        self.state.update(mode='repair',focus=name,repair_done=0,streak=0)
+
+    def due(self,round_,interval,maximum):
+        return round_%interval==0 or self.state.get('full_pass_round')==round_-1 or round_==maximum
+
+    def full_result(self,round_,weak,retained):
+        if weak or retained:
+            self.state.update(full_streak=0,full_pass_round=None)
+            self.focus(weak,retained);return False
+        previous=self.state.get('full_pass_round')
+        self.state['full_streak']=self.state.get('full_streak',0)+1 if previous==round_-1 else 1
+        self.state['full_pass_round']=round_
+        if self.state['mode']=='repair':self.state.update(mode='consolidate',consolidation_done=0,streak=0)
+        consolidated=self.state['consolidation_done']>=self.consolidation if self.state.get('focus') else self.state['normal_done']>=3
+        return self.state['full_streak']>=2 and consolidated and self.state['mode']!='repair'

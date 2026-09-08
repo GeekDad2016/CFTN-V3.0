@@ -21,8 +21,9 @@ def run(config):
             module='cftn_v3.criterion_curriculum_training' if trainer=='criterion' else 'cftn_v3.full_curriculum_training'
             command=[sys.executable,'-u','-m',module,'--data',item['data'],'--output',str(out),'--initial-checkpoint',item['initial_checkpoint']]
             if item.get('inherit_progress'):command.append('--inherit-progress')
+            if item.get('upgrade_recovery'):command.append('--upgrade-recovery')
             for key,value in item.get('policy',{}).items():
-                if key not in ('normal_rounds','remediation_rounds','attempts','examples','lr','validation_examples','retention_examples','consolidation_rounds'):
+                if key not in ('normal_rounds','remediation_rounds','attempts','examples','lr','validation_examples','retention_examples','consolidation_rounds','stage_rounds','full_check_every'):
                     raise ValueError('Unknown training policy setting: '+key)
                 command.extend(['--'+key.replace('_','-'),str(value)])
             with (out/'training.stdout.log').open('a') as stdout,(out/'training.stderr.log').open('a') as stderr:
