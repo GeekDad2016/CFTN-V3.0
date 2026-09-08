@@ -56,7 +56,7 @@ def snapshot(root):
     promotion=read(promotion_path)
     # A routine panel must never overwrite the evidence used for promotion.
     observation=promotion or latest or before
-    evidence_kind='Full promotion check' if promotion else 'Routine validation' if latest else 'Stage baseline'
+    evidence_kind=('Full experiment evaluation' if status.get('experiment_arm') else 'Full promotion check') if promotion else 'Routine validation' if latest else 'Stage baseline'
     evidence_round=promotion.get('epoch') if promotion else latest.get('epoch')
     if promotion and evidence_round is None and promotion_path.exists():
         prior_reports=[r for r in reports if r.get('phase')==status.get('phase') and
