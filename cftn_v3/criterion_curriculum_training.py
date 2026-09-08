@@ -126,7 +126,7 @@ def run(args):
                 status(epoch=round_,remediation_attempt=attempt,remediation_criteria=[focus] if mode=='repair' else weak,
                     training_mode=mode,focused_criterion=focus if mode=='repair' else None,
                     consolidation_done=controller.state['consolidation_done'],step=cursor,
-                    next_full_check=round_ if controller.due(round_,policy['full_check_every'],maxround) else min(maxround,((round_//policy['full_check_every'])+1)*policy['full_check_every']),
+                    next_full_check=controller.next_check(round_,policy['full_check_every'],maxround),
                     full_consecutive=controller.state.get('full_streak',0))
                 seed=9307+index*100000+round_
                 # Active training is 75%, prior accepted skills 25%; stage zero has no replay.

@@ -31,3 +31,21 @@ def test_normal_rounds_before_repair_do_not_replace_consolidation():
     assert not c.full_result(60,[],[])
     assert not c.full_result(61,[],[])
     assert c.state['mode']=='consolidate'
+
+def test_immediate_check_after_three_normal_rounds_then_next_round():
+    c=ScheduledRepairController();c.focus(['comparison'],[])
+    c.observe([],[]);c.observe([],[])
+    assert c.next_check(123,20,240)==125
+    c.observe([],[]);assert not c.due(123,20,240)
+    c.observe([],[]);assert not c.due(124,20,240)
+    assert c.next_check(125,20,240)==125
+    c.observe([],[]);assert c.due(125,20,240)
+    assert not c.full_result(125,[],[])
+    c.observe([],[]);assert c.due(126,20,240)
+    assert c.full_result(126,[],[])
+
+def test_full_failure_returns_to_repair_and_twenty_round_fallback():
+    c=ScheduledRepairController();c.state.update(mode='consolidate',consolidation_done=3)
+    assert not c.full_result(125,['comparison'],[])
+    assert not c.due(126,20,240)
+    assert c.next_check(126,20,240)==140

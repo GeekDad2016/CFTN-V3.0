@@ -64,7 +64,16 @@ class ScheduledRepairController(RepairController):
         self.state.update(mode='repair',focus=name,repair_done=0,streak=0)
 
     def due(self,round_,interval,maximum):
-        return round_%interval==0 or self.state.get('full_pass_round')==round_-1 or round_==maximum
+        ready=(self.state['mode']=='consolidate' and self.state['consolidation_done']>=self.consolidation
+               or self.state['mode']=='normal' and self.state['normal_done']>=3)
+        return ready or round_%interval==0 or self.state.get('full_pass_round')==round_-1 or round_==maximum
+
+    def next_check(self,round_,interval,maximum):
+        if self.due(round_,interval,maximum):return round_
+        scheduled=min(maximum,(round_//interval+1)*interval)
+        if self.state['mode']=='consolidate':return min(scheduled,round_+max(0,self.consolidation-self.state['consolidation_done']-1))
+        if self.state['mode']=='normal':return min(scheduled,round_+max(0,3-self.state['normal_done']-1))
+        return scheduled
 
     def full_result(self,round_,weak,retained):
         if weak or retained:
