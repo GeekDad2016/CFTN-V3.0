@@ -24,6 +24,12 @@ Run `scripts/start_local_curriculum.ps1`, which defaults to `config/local_curric
 
 Validation: unit/controller and runner tests cover class balancing, held-out exclusion, repair-only batches, three-round consolidation, regression, attempt limits, dashboard gates and checkpoint state. A disposable RTX 4070 update and checkpoint reload succeeded. `scripts/validate_criterion_cuda.py` reproduces that bounded CUDA check without changing the live checkpoint.
 
+## Initial training without validation
+
+The live Maths and queued String configuration skips all validation during the first 50 cumulative normal rounds of each stage. These rounds count toward the 240 normal-round budget. Recovery does not count toward the 50, and returning from recovery does not restart this period. Routine validation starts at normal round 51; the existing routine checks, full checks and two consecutive full-pass promotion requirement then apply. New stages defer their entry baseline rather than evaluating before round 1; retention still requires at least 95%. Existing stage baselines remain available.
+
+Checkpointing, replay, SIGReg where configured, and numerical-error checks continue throughout. Training-only reports contain loss and counters without invented validation scores. The dashboard labels saved scores as older measurements. A scheduling-only resume migration preserves model, optimizer, RNG and batch cursor and saves `before_validation_warmup.specialist` before updating metadata.
+
 ## SIGReg adoption
 
 The ten-round SIGReg endpoint was adopted with its optimizer and RNG intact. Five prior normal rounds plus ten SIGReg rounds give 15/240 normal rounds completed; the 57 historical recovery rounds remain separate. Curriculum resumes at total stage round 73 with zero batch cursor. The baseline arm is not counted or merged. The protected common checkpoint, both trial endpoints, and `math/before_sigreg_adoption.specialist` remain saved. `math/sigreg_adoption.json` records the source hash and policy. SIGReg code is shared by the experiment and curriculum in `cftn_v3/sigreg.py`; its coefficient is checked during resume and shown on the dashboard. This choice follows the user preference and does not claim the small trial established a stability benefit.

@@ -19,9 +19,11 @@
         "consolidation_rounds": 3,
         "stage_rounds": 240,
         "full_check_every": 20,
-        "sigreg_coefficient": 0.0001
+        "sigreg_coefficient": 0.0001,
+        "validation_warmup_rounds": 50
       },
-      "stage_first": true
+      "stage_first": true,
+      "upgrade_validation_warmup": true
     },
     {
       "tower": "string",
@@ -39,9 +41,11 @@
         "retention_examples": 8,
         "consolidation_rounds": 3,
         "stage_rounds": 240,
-        "full_check_every": 20
+        "full_check_every": 20,
+        "validation_warmup_rounds": 50
       },
-      "stage_first": true
+      "stage_first": true,
+      "upgrade_validation_warmup": true
     }
   ]
 }

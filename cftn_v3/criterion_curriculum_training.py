@@ -58,10 +58,11 @@ def run(args):
             meta={k:v for k,v in meta.items() if k in ('stage_index','completed','weak','retention_weak')}
             meta['round']=1
         policy={k:getattr(args,k) for k in ('normal_rounds','remediation_rounds','attempts','examples','lr','consolidation_rounds')}
+        policy.update(validation_warmup_rounds=getattr(args,'validation_warmup_rounds',0))
         policy.update(sigreg_coefficient=getattr(args,'sigreg_coefficient',0.))
         policy.update(stage_rounds=getattr(args,'stage_rounds',240),full_check_every=getattr(args,'full_check_every',20))
         policy.update(validation_examples=getattr(args,'validation_examples',12),retention_examples=getattr(args,'retention_examples',4))
-        saved_policy={'sigreg_coefficient':0.,'validation_examples':12,'retention_examples':4,**meta.get('policy',{})}
+        saved_policy={'validation_warmup_rounds':0,'sigreg_coefficient':0.,'validation_examples':12,'retention_examples':4,**meta.get('policy',{})}
         upgrading=resumed and meta.get('controller_version')==2 and getattr(args,'stage_first',False)
         if upgrading:
             if meta.get('dataset_hash')!=digest or any(saved_policy.get(k)!=policy[k] for k in ('examples','lr','validation_examples','retention_examples')):
@@ -80,6 +81,14 @@ def run(args):
             fresh.state.update(normal_done=normal_count,normal_total=normal_count,recovery_total=repair_count,legacy_recovery=repair_count)
             meta['controller']=fresh.state
             atomic(out/'stage_first_migration.json',{'resume_round':old_round,'normal_completed':normal_count,'recovery_completed':repair_count,'old_policy':saved_policy,'new_policy':policy,'backup':str(backup)})
+        elif resumed and getattr(args,'upgrade_validation_warmup',False) and saved_policy!=policy:
+            if meta.get('dataset_hash')!=digest or meta.get('controller_version')!=3 or any(saved_policy.get(k)!=v for k,v in policy.items() if k!='validation_warmup_rounds'):
+                raise ValueError('Warmup migration may only change validation scheduling')
+            import shutil
+            backup=out/'before_validation_warmup.specialist'
+            if not backup.exists():shutil.copy2(latest,backup)
+            meta['controller'].update(streak=0,full_streak=0,full_pass_round=None)
+            meta['consecutive']=0;upgrading=True
         elif resumed and (meta.get('dataset_hash')!=digest or saved_policy!=policy or meta.get('controller_version')!=3):raise ValueError('Resume data or policy changed')
         if meta.get('accepted'):status(state='complete',accepted=True);return
         if meta.get('terminal'):status(state='blocked',reason=meta['terminal']);return
@@ -118,6 +127,9 @@ def run(args):
             status(phase=phase,stage_index=index,scope=stage['scope'],epoch=start_round if index==start_stage else 1,
                 stage_count=len(manifest['stages']),active_examples=len(active),completed=completed)
             if entry_path.exists():entry=json.loads(entry_path.read_text())
+            elif controller.state.get('normal_total',controller.state['normal_done'])<policy['validation_warmup_rounds']:
+                entry={'baseline_deferred':True,'active':{'criteria':{}},'retention':{'criteria':{},'accuracy':None}}
+                atomic(entry_path,entry)
             else:
                 entry={'active':ev(active_panel,'stage baseline'),'retention':ev(retention_panel,'retention baseline')}
                 atomic(entry_path,entry)
@@ -128,13 +140,16 @@ def run(args):
             if upgrading and index==start_stage:save(index,start_round,cursor)
             for round_ in range(start_round if index==start_stage else 1,maxround+1):
                 begun=time.time();mode=controller.state['mode'];focus=controller.state['focus']
+                warmup=mode=='normal' and controller.state.get('normal_total',controller.state['normal_done'])<policy['validation_warmup_rounds']
                 attempt=controller.state['attempt_counts'].get(focus,0)
                 status(epoch=round_,remediation_attempt=attempt,remediation_criteria=[focus] if mode=='repair' else weak,
                     training_mode=mode,focused_criterion=focus if mode=='repair' else None,
                     consolidation_done=controller.state['consolidation_done'],step=cursor,
                     normal_done=controller.state['normal_done'],normal_total=controller.state.get('normal_total',0),
                     recovery_total=controller.state.get('recovery_total',0),recovery_blocks=controller.state.get('recovery_blocks',0),
-                    next_full_check=controller.next_check(round_,policy['full_check_every'],maxround),
+                    validation_suppressed=warmup,validation_resumes_normal_round=policy['validation_warmup_rounds']+1,
+                    next_routine_check=round_+policy['validation_warmup_rounds']-controller.state.get('normal_total',controller.state['normal_done']) if warmup else round_,
+                    next_full_check=None if warmup else controller.next_check(round_,policy['full_check_every'],maxround),
                     full_consecutive=controller.state.get('full_streak',0))
                 seed=9307+index*100000+round_
                 # Active training is 75%, prior accepted skills 25%; stage zero has no replay.
@@ -158,6 +173,18 @@ def run(args):
                     if (step+1)%100==0 or (out/'STOP').exists():save(index,round_,step+1)
                     if (out/'STOP').exists():status(state='paused',reason='Safe stop requested; optimizer and cursor saved');return
                 cursor=0
+                if warmup:
+                    controller.state['normal_done']+=1
+                    controller.state['normal_total']=controller.state.get('normal_total',0)+1
+                    controller.state.update(streak=0,full_streak=0,full_pass_round=None)
+                    consecutive=0
+                    atomic(out/f'{phase}_training_only_{round_:03d}.json',{'phase':phase,'epoch':round_,'validation_skipped':True,
+                        'normal_total':controller.state['normal_total'],'loss':sum(losses)/len(losses) if losses else current.get('loss')})
+                    save(index,round_+1)
+                    status(state='training',normal_done=controller.state['normal_done'],normal_total=controller.state['normal_total'],
+                        reason='Initial normal training; validation starts at normal round '+str(policy['validation_warmup_rounds']+1),passed=None)
+                    continue
+                status(reason=None)
                 observed=ev(active_panel,'active validation');retained=ev(retention_panel,'prior-stage retention')
                 weak=failed_criteria(observed);retention_weak=failed_criteria(retained,True,entry['retention']['criteria'])
                 passed=not weak and not retention_weak
@@ -212,6 +239,7 @@ if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--data',required=True);p.add_argument('--output',required=True);p.add_argument('--initial-checkpoint',required=True)
     p.add_argument('--normal-rounds',type=int,default=8);p.add_argument('--remediation-rounds',type=int,default=6)
     p.add_argument('--attempts',type=int,default=3);p.add_argument('--examples',type=int,default=2048);p.add_argument('--lr',type=float,default=5e-5)
+    p.add_argument('--validation-warmup-rounds',type=int,default=0);p.add_argument('--upgrade-validation-warmup',action='store_true')
     p.add_argument('--sigreg-coefficient',type=float,default=0.)
     p.add_argument('--stage-first',action='store_true')
     p.add_argument('--stage-rounds',type=int,default=240);p.add_argument('--full-check-every',type=int,default=20);p.add_argument('--upgrade-recovery',action='store_true')
