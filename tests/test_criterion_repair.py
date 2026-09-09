@@ -88,12 +88,12 @@ def test_runner_repair_consolidation_and_promotion(tmp_path,monkeypatch,warmup):
         return {**metric,'criteria':{'addition':metric} if rows else {},'samples':[]}
     monkeypatch.setattr(t,'evaluate',evaluate);saves=[]
     monkeypatch.setattr(t,'save_specialist',lambda p,m,meta,optimizer=None:saves.append(copy.deepcopy(meta)))
-    args=SimpleNamespace(output=str(tmp_path/'run'),data='unused',initial_checkpoint='unused',normal_rounds=60 if warmup else 3,remediation_rounds=10,attempts=1,examples=4,lr=.001,consolidation_rounds=3,inherit_progress=False,stage_rounds=13,full_check_every=8,validation_warmup_rounds=0 if warmup=='loss' else warmup,validation_loss_threshold=.0035 if warmup=='loss' else 0.)
+    args=SimpleNamespace(output=str(tmp_path/'run'),data='unused',initial_checkpoint='unused',normal_rounds=60 if warmup else 3,remediation_rounds=10,attempts=1,examples=4,lr=.001,consolidation_rounds=3,inherit_progress=False,stage_rounds=13,full_check_every=8,validation_warmup_rounds=0 if warmup=='loss' else warmup,validation_loss_threshold=.0035 if warmup=='loss' else 0.,unbounded_loss_warmup=1 if warmup=='loss' else 0)
     t.run(args)
     reports=[json.loads(p.read_text()) for p in sorted((tmp_path/'run').glob('*_epoch_*.json'))]
-    assert [r['training_mode'] for r in reports]==(['normal']*3 if warmup else ['normal']*3+['repair']*2+['normal']*4)
+    assert [r['training_mode'] for r in reports]==(['normal']*(4 if warmup=='loss' else 3) if warmup else ['normal']*3+['repair']*2+['normal']*4)
     if warmup:
-        assert [r['epoch'] for r in reports]==([4,5,6] if warmup=='loss' else [51,52,53])
+        assert [r['epoch'] for r in reports]==([4,5,6,7] if warmup=='loss' else [51,52,53])
         assert len(list((tmp_path/'run').glob('*_training_only_*.json')))==(3 if warmup=='loss' else 50)
     assert saves[-1]['accepted'] and saves[-1]['completed']==['add']
     assert not (tmp_path/'native_training.lock').exists()

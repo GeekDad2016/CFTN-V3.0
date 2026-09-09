@@ -10,9 +10,10 @@ def validation_pending(state, policy):
 
 def unlock_validation(state, policy, mean_loss):
     reached = mean_loss is not None and math.isfinite(mean_loss) and mean_loss <= policy['validation_loss_threshold']
-    exhausted = state['normal_done'] + 1 >= policy['normal_rounds']
+    exhausted = not policy.get('unbounded_loss_warmup') and state['normal_done'] + 1 >= policy['normal_rounds']
     if reached or exhausted:
         state['validation_enabled'] = True
+        if policy.get('unbounded_loss_warmup'):state['normal_done'] = 0
         state['validation_unlock_reason'] = 'Training-loss threshold reached' if reached else 'Normal-round budget reached; evaluating for recovery'
         return True
     return False

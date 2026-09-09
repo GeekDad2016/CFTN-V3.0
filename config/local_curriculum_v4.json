@@ -21,7 +21,8 @@
         "full_check_every": 20,
         "sigreg_coefficient": 0.0001,
         "validation_warmup_rounds": 0,
-        "validation_loss_threshold": 0.0035
+        "validation_loss_threshold": 0.0035,
+        "unbounded_loss_warmup": 1
       },
       "stage_first": true,
       "upgrade_validation_warmup": true
@@ -44,7 +45,8 @@
         "stage_rounds": 240,
         "full_check_every": 20,
         "validation_warmup_rounds": 0,
-        "validation_loss_threshold": 0.0035
+        "validation_loss_threshold": 0.0035,
+        "unbounded_loss_warmup": 1
       },
       "stage_first": true,
       "upgrade_validation_warmup": true
