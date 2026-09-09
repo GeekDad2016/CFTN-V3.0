@@ -207,9 +207,11 @@ def run(args):
                     with torch.random.fork_rng(devices=[torch.cuda.current_device()]):
                         diagnostic_active=ev(active_panel,'manual active validation')
                         diagnostic_retention=ev(retention_panel,'manual prior-stage retention')
-                    atomic(out/f'{phase}_manual_validation.json',{'phase':phase,'epoch':round_,
+                    diagnostic={'phase':phase,'epoch':round_,'loss':controller.state.get('round_mean_loss'),
                         'active':diagnostic_active,'retention':diagnostic_retention,'updated':time.time(),
-                        'passed':not failed_criteria(diagnostic_active) and not failed_criteria(diagnostic_retention,True,entry['retention']['criteria'])})
+                        'passed':not failed_criteria(diagnostic_active) and not failed_criteria(diagnostic_retention,True,entry['retention']['criteria'])}
+                    atomic(out/f'{phase}_manual_round_{round_:06d}.json',diagnostic)
+                    atomic(out/f'{phase}_manual_validation.json',diagnostic)
                     request.unlink(missing_ok=True)
                     status(manual_validation='complete',evaluation=None,state='training')
 

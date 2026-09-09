@@ -46,3 +46,11 @@ def test_manual_panel_is_labelled_and_pending_is_visible(tmp_path):
     assert data['manual_validation_pending']
     assert data['display_evaluation']['kind']=='Manual validation (routine panel)'
     assert data['display_evaluation']['epoch']==2
+
+
+def test_manual_history_keeps_rounds_and_deduplicates_latest(tmp_path):
+    for epoch in (10,20):
+        r={'phase':'sums','epoch':epoch,'updated':epoch,'active':{},'retention':{}}
+        (tmp_path/f'sums_manual_round_{epoch:06d}.json').write_text(json.dumps(r))
+    (tmp_path/'sums_manual_validation.json').write_text(json.dumps(r))
+    assert [r['epoch'] for r in snapshot(tmp_path)['manual_history']]==[10,20]

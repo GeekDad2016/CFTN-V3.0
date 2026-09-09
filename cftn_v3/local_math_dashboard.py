@@ -65,6 +65,11 @@ def snapshot(root):
     manual=read(root/(status.get('phase','baseline')+'_manual_validation.json'))
     if manual and manual.get('epoch',-1)>=max(promotion.get('epoch',-1) or -1,latest.get('epoch',-1) or -1):
         observation=manual;evidence_kind='Manual validation (routine panel)';evidence_round=manual['epoch']
+    manual_records={}
+    for path in list(root.glob('*_manual_round_*.json'))+list(root.glob('*_manual_validation.json')):
+        record=read(path)
+        if record.get('phase') and record.get('epoch') is not None:manual_records[(record['phase'],record['epoch'])]=record
+    manual_history=sorted(manual_records.values(),key=lambda r:r.get('updated',0))
     criterion_details=[]
     for kind in ('active','retention'):
         report=observation.get(kind,{})
@@ -87,6 +92,7 @@ def snapshot(root):
         'history':[{**r,'active':{k:v for k,v in r['active'].items() if k!='samples'},
             'retention':{k:v for k,v in r['retention'].items() if k!='samples'}} for r in reports],
         'samples':sorted(observation.get('active',{}).get('samples',[]),key=lambda r:bool(r.get('answer_correct') and r.get('trace_correct')))[:16],
+        'manual_history':manual_history,
         'worker_alive':alive,'manual_validation_pending':(root/'VALIDATE_REQUEST.json').exists(),
         'errors':errors,'root':str(root),'server_time':time.time(),
         'checkpoint':{'path':str(checkpoint),'exists':checkpoint.exists(),
