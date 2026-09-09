@@ -16,6 +16,7 @@ from .math_procedures import score
 from .file_io import StatusPublisher
 from .criterion_sampling import balanced_panel as panel
 from .criterion_repair import failures, add_strata
+from .sigreg import regularized_loss
 from .stage_first_repair import StageFirstController as RepairController
 
 from .full_curriculum_training import evaluate as raw_evaluate
@@ -57,9 +58,10 @@ def run(args):
             meta={k:v for k,v in meta.items() if k in ('stage_index','completed','weak','retention_weak')}
             meta['round']=1
         policy={k:getattr(args,k) for k in ('normal_rounds','remediation_rounds','attempts','examples','lr','consolidation_rounds')}
+        policy.update(sigreg_coefficient=getattr(args,'sigreg_coefficient',0.))
         policy.update(stage_rounds=getattr(args,'stage_rounds',240),full_check_every=getattr(args,'full_check_every',20))
         policy.update(validation_examples=getattr(args,'validation_examples',12),retention_examples=getattr(args,'retention_examples',4))
-        saved_policy={'validation_examples':12,'retention_examples':4,**meta.get('policy',{})}
+        saved_policy={'sigreg_coefficient':0.,'validation_examples':12,'retention_examples':4,**meta.get('policy',{})}
         upgrading=resumed and meta.get('controller_version')==2 and getattr(args,'stage_first',False)
         if upgrading:
             if meta.get('dataset_hash')!=digest or any(saved_policy.get(k)!=policy[k] for k in ('examples','lr','validation_examples','retention_examples')):
@@ -90,7 +92,7 @@ def run(args):
         maxround=args.normal_rounds*(args.attempts+1)+args.remediation_rounds*args.attempts+meta.get('controller',{}).get('legacy_recovery',0)
         if maxround<1 or policy['full_check_every']<1:raise ValueError('Round budgets must be positive')
         controller=RepairController(args.normal_rounds,args.remediation_rounds,args.attempts,args.consolidation_rounds,meta.get('controller'))
-        status(state='starting',phase='curriculum validation',source=str(args.initial_checkpoint),dataset=str(data),
+        status(state='starting',phase='curriculum validation',source=meta.get('adopted_sigreg_experiment',{}).get('endpoint',str(args.initial_checkpoint)),dataset=str(data),
             parameters=sum(p.numel() for p in model.parameters()),gpu=torch.cuda.get_device_name(),
             checkpoint=str(latest),completed=completed,epochs=maxround,policy=policy,
             resumed=resumed,resume_round=start_round,resume_cursor=cursor,
@@ -100,7 +102,8 @@ def run(args):
             nonlocal meta
             meta={'tower':tower,'accepted':False,'dataset_hash':digest,'policy':policy,'stage_index':index,'round':round_,
                 'cursor':cursor_,'completed':completed,'consecutive':consecutive,'weak':weak,'retention_weak':retention_weak,
-                'source_checkpoint':str(args.initial_checkpoint),'controller':controller.state,'controller_version':3,**extra}
+                'source_checkpoint':str(args.initial_checkpoint),'controller':controller.state,'controller_version':3,
+                'adopted_sigreg_experiment':meta.get('adopted_sigreg_experiment',{}),**extra}
             save_specialist(latest,model,meta,optimizer)
         def ev(rows,label):
             status(state='evaluating',evaluation=label,evaluation_done=0,evaluation_total=len(rows))
@@ -144,10 +147,14 @@ def run(args):
                 for step,chunk in enumerate(chunks):
                     if step<cursor:continue
                     optimizer.zero_grad(set_to_none=True)
-                    with torch.autocast('cuda',dtype=torch.bfloat16):loss=batch_loss(model,chunk)
+                    with torch.autocast('cuda',dtype=torch.bfloat16):
+                        if policy['sigreg_coefficient']:
+                            loss,ce,reg=regularized_loss(model,chunk,seed*10000+step,policy['sigreg_coefficient'])
+                        else:
+                            loss=batch_loss(model,chunk);ce=loss;reg=loss.new_zeros(())
                     if not torch.isfinite(loss):raise RuntimeError('Non-finite training loss')
-                    loss.backward();torch.nn.utils.clip_grad_norm_(model.parameters(),1.);optimizer.step();losses.append(float(loss.detach()))
-                    if step%10==0:status(step=step+1,loss=losses[-1],gpu_bytes=torch.cuda.memory_allocated())
+                    loss.backward();torch.nn.utils.clip_grad_norm_(model.parameters(),1.);optimizer.step();losses.append(float(ce.detach()))
+                    if step%10==0:status(step=step+1,loss=losses[-1],total_loss=float(loss.detach()),sigreg_loss=float(reg.detach()),sigreg_coefficient=policy['sigreg_coefficient'],gpu_bytes=torch.cuda.memory_allocated())
                     if (step+1)%100==0 or (out/'STOP').exists():save(index,round_,step+1)
                     if (out/'STOP').exists():status(state='paused',reason='Safe stop requested; optimizer and cursor saved');return
                 cursor=0
@@ -205,6 +212,7 @@ if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--data',required=True);p.add_argument('--output',required=True);p.add_argument('--initial-checkpoint',required=True)
     p.add_argument('--normal-rounds',type=int,default=8);p.add_argument('--remediation-rounds',type=int,default=6)
     p.add_argument('--attempts',type=int,default=3);p.add_argument('--examples',type=int,default=2048);p.add_argument('--lr',type=float,default=5e-5)
+    p.add_argument('--sigreg-coefficient',type=float,default=0.)
     p.add_argument('--stage-first',action='store_true')
     p.add_argument('--stage-rounds',type=int,default=240);p.add_argument('--full-check-every',type=int,default=20);p.add_argument('--upgrade-recovery',action='store_true')
     p.add_argument('--inherit-progress',action='store_true');p.add_argument('--consolidation-rounds',type=int,default=3)

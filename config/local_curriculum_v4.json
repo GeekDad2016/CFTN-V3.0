@@ -18,7 +18,8 @@
         "retention_examples": 8,
         "consolidation_rounds": 3,
         "stage_rounds": 240,
-        "full_check_every": 20
+        "full_check_every": 20,
+        "sigreg_coefficient": 0.0001
       },
       "stage_first": true
     },
