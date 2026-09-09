@@ -1,4 +1,5 @@
 """Local-only native training with gated stages and bounded automatic remediation."""
+from .validation_schedule import validation_pending, unlock_validation
 import argparse
 import collections
 import json
@@ -58,11 +59,12 @@ def run(args):
             meta={k:v for k,v in meta.items() if k in ('stage_index','completed','weak','retention_weak')}
             meta['round']=1
         policy={k:getattr(args,k) for k in ('normal_rounds','remediation_rounds','attempts','examples','lr','consolidation_rounds')}
+        policy.update(validation_loss_threshold=getattr(args,'validation_loss_threshold',0.))
         policy.update(validation_warmup_rounds=getattr(args,'validation_warmup_rounds',0))
         policy.update(sigreg_coefficient=getattr(args,'sigreg_coefficient',0.))
         policy.update(stage_rounds=getattr(args,'stage_rounds',240),full_check_every=getattr(args,'full_check_every',20))
         policy.update(validation_examples=getattr(args,'validation_examples',12),retention_examples=getattr(args,'retention_examples',4))
-        saved_policy={'validation_warmup_rounds':0,'sigreg_coefficient':0.,'validation_examples':12,'retention_examples':4,**meta.get('policy',{})}
+        saved_policy={'validation_loss_threshold':0.,'validation_warmup_rounds':0,'sigreg_coefficient':0.,'validation_examples':12,'retention_examples':4,**meta.get('policy',{})}
         upgrading=resumed and meta.get('controller_version')==2 and getattr(args,'stage_first',False)
         if upgrading:
             if meta.get('dataset_hash')!=digest or any(saved_policy.get(k)!=policy[k] for k in ('examples','lr','validation_examples','retention_examples')):
@@ -82,12 +84,13 @@ def run(args):
             meta['controller']=fresh.state
             atomic(out/'stage_first_migration.json',{'resume_round':old_round,'normal_completed':normal_count,'recovery_completed':repair_count,'old_policy':saved_policy,'new_policy':policy,'backup':str(backup)})
         elif resumed and getattr(args,'upgrade_validation_warmup',False) and saved_policy!=policy:
-            if meta.get('dataset_hash')!=digest or meta.get('controller_version')!=3 or any(saved_policy.get(k)!=v for k,v in policy.items() if k!='validation_warmup_rounds'):
+            if meta.get('dataset_hash')!=digest or meta.get('controller_version')!=3 or any(saved_policy.get(k)!=v for k,v in policy.items() if k not in ('validation_warmup_rounds','validation_loss_threshold')):
                 raise ValueError('Warmup migration may only change validation scheduling')
             import shutil
-            backup=out/'before_validation_warmup.specialist'
+            backup=out/('before_validation_loss_threshold.specialist' if policy['validation_loss_threshold'] else 'before_validation_warmup.specialist')
             if not backup.exists():shutil.copy2(latest,backup)
             meta['controller'].update(streak=0,full_streak=0,full_pass_round=None)
+            meta['controller']['validation_enabled']=False
             meta['consecutive']=0;upgrading=True
         elif resumed and (meta.get('dataset_hash')!=digest or saved_policy!=policy or meta.get('controller_version')!=3):raise ValueError('Resume data or policy changed')
         if meta.get('accepted'):status(state='complete',accepted=True);return
@@ -127,7 +130,7 @@ def run(args):
             status(phase=phase,stage_index=index,scope=stage['scope'],epoch=start_round if index==start_stage else 1,
                 stage_count=len(manifest['stages']),active_examples=len(active),completed=completed)
             if entry_path.exists():entry=json.loads(entry_path.read_text())
-            elif controller.state.get('normal_total',controller.state['normal_done'])<policy['validation_warmup_rounds']:
+            elif validation_pending(controller.state,policy):
                 entry={'baseline_deferred':True,'active':{'criteria':{}},'retention':{'criteria':{},'accuracy':None}}
                 atomic(entry_path,entry)
             else:
@@ -140,15 +143,16 @@ def run(args):
             if upgrading and index==start_stage:save(index,start_round,cursor)
             for round_ in range(start_round if index==start_stage else 1,maxround+1):
                 begun=time.time();mode=controller.state['mode'];focus=controller.state['focus']
-                warmup=mode=='normal' and controller.state.get('normal_total',controller.state['normal_done'])<policy['validation_warmup_rounds']
+                warmup=validation_pending(controller.state,policy)
                 attempt=controller.state['attempt_counts'].get(focus,0)
                 status(epoch=round_,remediation_attempt=attempt,remediation_criteria=[focus] if mode=='repair' else weak,
                     training_mode=mode,focused_criterion=focus if mode=='repair' else None,
                     consolidation_done=controller.state['consolidation_done'],step=cursor,
                     normal_done=controller.state['normal_done'],normal_total=controller.state.get('normal_total',0),
                     recovery_total=controller.state.get('recovery_total',0),recovery_blocks=controller.state.get('recovery_blocks',0),
-                    validation_suppressed=warmup,validation_resumes_normal_round=policy['validation_warmup_rounds']+1,
-                    next_routine_check=round_+policy['validation_warmup_rounds']-controller.state.get('normal_total',controller.state['normal_done']) if warmup else round_,
+                    validation_suppressed=warmup,validation_loss_threshold=policy['validation_loss_threshold'],round_mean_loss=controller.state.get('round_mean_loss'),
+                    validation_resumes_normal_round=None if policy['validation_loss_threshold'] else policy['validation_warmup_rounds']+1,
+                    next_routine_check=None if warmup and policy['validation_loss_threshold'] else round_+policy['validation_warmup_rounds']-controller.state.get('normal_total',controller.state['normal_done']) if warmup else round_,
                     next_full_check=None if warmup else controller.next_check(round_,policy['full_check_every'],maxround),
                     full_consecutive=controller.state.get('full_streak',0))
                 seed=9307+index*100000+round_
@@ -158,6 +162,8 @@ def run(args):
                 status(batch_criteria=dict(collections.Counter(r['criterion'] for r in rows)),
                     batch_decisions=dict(collections.Counter(r['answer'] for r in rows)) if mode=='repair' else {})
                 chunks=list(batches(rows));losses=[];model.train()
+                if not cursor:controller.state.update(round_loss_sum=0.,round_loss_count=0)
+                complete_loss=not cursor or controller.state.get('round_loss_count',0)==cursor
                 status(state='remediating' if mode=='repair' else 'training',steps=len(chunks),evaluation=None)
                 for step,chunk in enumerate(chunks):
                     if step<cursor:continue
@@ -169,10 +175,18 @@ def run(args):
                             loss=batch_loss(model,chunk);ce=loss;reg=loss.new_zeros(())
                     if not torch.isfinite(loss):raise RuntimeError('Non-finite training loss')
                     loss.backward();torch.nn.utils.clip_grad_norm_(model.parameters(),1.);optimizer.step();losses.append(float(ce.detach()))
+                    controller.state['round_loss_sum']=controller.state.get('round_loss_sum',0.)+losses[-1]
+                    controller.state['round_loss_count']=controller.state.get('round_loss_count',0)+1
                     if step%10==0:status(step=step+1,loss=losses[-1],total_loss=float(loss.detach()),sigreg_loss=float(reg.detach()),sigreg_coefficient=policy['sigreg_coefficient'],gpu_bytes=torch.cuda.memory_allocated())
                     if (step+1)%100==0 or (out/'STOP').exists():save(index,round_,step+1)
                     if (out/'STOP').exists():status(state='paused',reason='Safe stop requested; optimizer and cursor saved');return
                 cursor=0
+                mean_loss=controller.state['round_loss_sum']/controller.state['round_loss_count'] if controller.state.get('round_loss_count') else None
+                controller.state['round_mean_loss']=mean_loss if complete_loss else None
+                if warmup and policy['validation_loss_threshold'] and unlock_validation(controller.state,policy,mean_loss if complete_loss else None):
+                    warmup=False
+                    status(validation_suppressed=False,reason=controller.state['validation_unlock_reason'])
+                status(round_mean_loss=controller.state['round_mean_loss'])
                 if warmup:
                     controller.state['normal_done']+=1
                     controller.state['normal_total']=controller.state.get('normal_total',0)+1
@@ -182,7 +196,7 @@ def run(args):
                         'normal_total':controller.state['normal_total'],'loss':sum(losses)/len(losses) if losses else current.get('loss')})
                     save(index,round_+1)
                     status(state='training',normal_done=controller.state['normal_done'],normal_total=controller.state['normal_total'],
-                        reason='Initial normal training; validation starts at normal round '+str(policy['validation_warmup_rounds']+1),passed=None)
+                        reason=('Training until round-average CE loss <= '+str(policy['validation_loss_threshold'])+'; budget-end evaluation remains required') if policy['validation_loss_threshold'] else 'Initial normal training; validation starts at normal round '+str(policy['validation_warmup_rounds']+1),passed=None)
                     continue
                 status(reason=None)
                 observed=ev(active_panel,'active validation');retained=ev(retention_panel,'prior-stage retention')
@@ -239,7 +253,7 @@ if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--data',required=True);p.add_argument('--output',required=True);p.add_argument('--initial-checkpoint',required=True)
     p.add_argument('--normal-rounds',type=int,default=8);p.add_argument('--remediation-rounds',type=int,default=6)
     p.add_argument('--attempts',type=int,default=3);p.add_argument('--examples',type=int,default=2048);p.add_argument('--lr',type=float,default=5e-5)
-    p.add_argument('--validation-warmup-rounds',type=int,default=0);p.add_argument('--upgrade-validation-warmup',action='store_true')
+    p.add_argument('--validation-loss-threshold',type=float,default=0.);p.add_argument('--validation-warmup-rounds',type=int,default=0);p.add_argument('--upgrade-validation-warmup',action='store_true')
     p.add_argument('--sigreg-coefficient',type=float,default=0.)
     p.add_argument('--stage-first',action='store_true')
     p.add_argument('--stage-rounds',type=int,default=240);p.add_argument('--full-check-every',type=int,default=20);p.add_argument('--upgrade-recovery',action='store_true')

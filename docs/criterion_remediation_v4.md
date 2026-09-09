@@ -24,11 +24,11 @@ Run `scripts/start_local_curriculum.ps1`, which defaults to `config/local_curric
 
 Validation: unit/controller and runner tests cover class balancing, held-out exclusion, repair-only batches, three-round consolidation, regression, attempt limits, dashboard gates and checkpoint state. A disposable RTX 4070 update and checkpoint reload succeeded. `scripts/validate_criterion_cuda.py` reproduces that bounded CUDA check without changing the live checkpoint.
 
-## Initial training without validation
+## Loss-based validation start
 
-The live Maths and queued String configuration skips all validation during the first 50 cumulative normal rounds of each stage. These rounds count toward the 240 normal-round budget. Recovery does not count toward the 50, and returning from recovery does not restart this period. Routine validation starts at normal round 51; the existing routine checks, full checks and two consecutive full-pass promotion requirement then apply. New stages defer their entry baseline rather than evaluating before round 1; retention still requires at least 95%. Existing stage baselines remain available.
+Maths and queued String now train without validation until a complete normal round's mean training cross-entropy loss is at most 0.0035. This replaces the first-50-round rule. The mean uses batch losses, excludes the SIGReg penalty, and includes the existing active/replay mixture. Its sum and count are checkpointed with the batch cursor. A migrated partial round without earlier loss statistics cannot unlock validation from a partial mean.
 
-Checkpointing, replay, SIGReg where configured, and numerical-error checks continue throughout. Training-only reports contain loss and counters without invented validation scores. The dashboard labels saved scores as older measurements. A scheduling-only resume migration preserves model, optimizer, RNG and batch cursor and saves `before_validation_warmup.specialist` before updating metadata.
+Validation runs after the qualifying round and remains enabled for the rest of that stage, including recovery. If the threshold is never reached, round 240 still evaluates and performs the full gate so targeted recovery remains possible. New stages reset the loss gate; entry baselines are deferred. Existing acceptance, retention, replay, checkpointing and numerical checks remain. The dashboard shows the last complete round average and threshold, and labels older validation measurements. Scheduling migration preserves weights, optimizer and RNG with a separate `before_validation_loss_threshold.specialist` backup.
 
 ## SIGReg adoption
 
