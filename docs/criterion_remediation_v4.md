@@ -33,3 +33,7 @@ Validation runs after the qualifying round and remains enabled for the rest of t
 ## SIGReg adoption
 
 The ten-round SIGReg endpoint was adopted with its optimizer and RNG intact. Five prior normal rounds plus ten SIGReg rounds give 15/240 normal rounds completed; the 57 historical recovery rounds remain separate. Curriculum resumes at total stage round 73 with zero batch cursor. The baseline arm is not counted or merged. The protected common checkpoint, both trial endpoints, and `math/before_sigreg_adoption.specialist` remain saved. `math/sigreg_adoption.json` records the source hash and policy. SIGReg code is shared by the experiment and curriculum in `cftn_v3/sigreg.py`; its coefficient is checked during resume and shown on the dashboard. This choice follows the user preference and does not claim the small trial established a stability benefit.
+
+## Manual dashboard validation
+
+The Validate after this round button queues one diagnostic active and retention panel at the next round boundary. Repeated clicks while queued do not duplicate work. The saved manual report includes inspectable answers and traces and is explicitly distinct from promotion evidence. It does not update controller counters, trigger recovery, or unlock automatic validation. The worker continues training afterward.

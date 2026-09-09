@@ -1,4 +1,4 @@
-"""Read-only local specialist dashboard. No model loading or GPU allocation."""
+"""Local specialist dashboard with queued validation control. No model loading or GPU allocation."""
 import argparse
 import json
 import time
@@ -62,6 +62,9 @@ def snapshot(root):
         prior_reports=[r for r in reports if r.get('phase')==status.get('phase') and
             (root/f"{r['phase']}_epoch_{r['epoch']:03d}.json").stat().st_mtime<=promotion_path.stat().st_mtime]
         evidence_round=prior_reports[-1]['epoch'] if prior_reports else None
+    manual=read(root/(status.get('phase','baseline')+'_manual_validation.json'))
+    if manual and manual.get('epoch',-1)>=max(promotion.get('epoch',-1) or -1,latest.get('epoch',-1) or -1):
+        observation=manual;evidence_kind='Manual validation (routine panel)';evidence_round=manual['epoch']
     criterion_details=[]
     for kind in ('active','retention'):
         report=observation.get(kind,{})
@@ -84,7 +87,7 @@ def snapshot(root):
         'history':[{**r,'active':{k:v for k,v in r['active'].items() if k!='samples'},
             'retention':{k:v for k,v in r['retention'].items() if k!='samples'}} for r in reports],
         'samples':sorted(observation.get('active',{}).get('samples',[]),key=lambda r:bool(r.get('answer_correct') and r.get('trace_correct')))[:16],
-        'worker_alive':alive,
+        'worker_alive':alive,'manual_validation_pending':(root/'VALIDATE_REQUEST.json').exists(),
         'errors':errors,'root':str(root),'server_time':time.time(),
         'checkpoint':{'path':str(checkpoint),'exists':checkpoint.exists(),
             'updated':checkpoint.stat().st_mtime if checkpoint.exists() else None},
@@ -94,6 +97,17 @@ def snapshot(root):
 def main():
     p=argparse.ArgumentParser();p.add_argument('--root',required=True);p.add_argument('--host',default='127.0.0.1');p.add_argument('--port',type=int,default=8792);a=p.parse_args();root=Path(a.root)
     class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            if self.path!='/api/validate':self.send_error(404);return
+            if self.headers.get('X-CFTN-Action')!='validate':self.send_error(403);return
+            data=snapshot(root)
+            if not data['worker_alive']:self.send_error(409,'Training worker is not running');return
+            target=Path(data['root'])/'VALIDATE_REQUEST.json'
+            try:
+                with target.open('x') as stream:json.dump({'phase':data['status'].get('phase'),'requested':time.time()},stream)
+            except FileExistsError:pass
+            self.send_response(202);self.send_header('Content-Type','application/json');self.end_headers()
+            self.wfile.write(b'{"queued":true}')
         def do_GET(self):
             if self.path=='/api':
                 payload=json.dumps(snapshot(root)).encode();kind='application/json'

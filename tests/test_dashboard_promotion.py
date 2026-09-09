@@ -35,3 +35,14 @@ def test_legacy_promotion_report_infers_round_and_uses_gate_retention_threshold(
     data=snapshot(tmp_path)
     assert data['display_evaluation']['epoch']==46
     assert data['criterion_details'][0]['passed']
+
+
+def test_manual_panel_is_labelled_and_pending_is_visible(tmp_path):
+    (tmp_path/'status.json').write_text(json.dumps({'phase':'sums'}))
+    (tmp_path/'sums_promotion_validation.json').write_text(json.dumps({'epoch':1,'passed':False}))
+    (tmp_path/'sums_manual_validation.json').write_text(json.dumps({'epoch':2,'passed':True,'active':{},'retention':{}}))
+    (tmp_path/'VALIDATE_REQUEST.json').write_text('{}')
+    data=snapshot(tmp_path)
+    assert data['manual_validation_pending']
+    assert data['display_evaluation']['kind']=='Manual validation (routine panel)'
+    assert data['display_evaluation']['epoch']==2

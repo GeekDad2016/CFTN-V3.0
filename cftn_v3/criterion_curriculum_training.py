@@ -200,6 +200,19 @@ def run(args):
                         maxround=round_+args.normal_rounds*(args.attempts+1)+args.remediation_rounds*args.attempts-1
                     status(validation_suppressed=False,reason=controller.state['validation_unlock_reason'])
                 status(round_mean_loss=controller.state['round_mean_loss'])
+                request=out/'VALIDATE_REQUEST.json'
+                if request.exists():
+                    status(manual_validation='running')
+                    # A diagnostic check does not advance the controller or consume RNG.
+                    with torch.random.fork_rng(devices=[torch.cuda.current_device()]):
+                        diagnostic_active=ev(active_panel,'manual active validation')
+                        diagnostic_retention=ev(retention_panel,'manual prior-stage retention')
+                    atomic(out/f'{phase}_manual_validation.json',{'phase':phase,'epoch':round_,
+                        'active':diagnostic_active,'retention':diagnostic_retention,'updated':time.time(),
+                        'passed':not failed_criteria(diagnostic_active) and not failed_criteria(diagnostic_retention,True,entry['retention']['criteria'])})
+                    request.unlink(missing_ok=True)
+                    status(manual_validation='complete',evaluation=None,state='training')
+
                 if warmup:
                     controller.state['normal_done']+=1
                     controller.state['normal_total']=controller.state.get('normal_total',0)+1
