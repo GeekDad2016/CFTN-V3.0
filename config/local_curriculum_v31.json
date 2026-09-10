@@ -21,7 +21,8 @@
         "sigreg_coefficient": 0.0003,
         "validation_warmup_rounds": 0,
         "validation_loss_threshold": 0.003,
-        "unbounded_loss_warmup": 1
+        "unbounded_loss_warmup": 1,
+        "strict_first_stages": 5
       },
       "stage_first": true
     },

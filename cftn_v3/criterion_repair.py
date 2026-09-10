@@ -1,7 +1,9 @@
 """Resumable single-criterion repair followed by normal-mixture consolidation."""
 from .criterion_sampling import BalancedSampler, decision
 
-def failures(report, retention=False, baseline=None):
+def failures(report, retention=False, baseline=None, strict=False):
+    if strict:
+        return [c for c,m in report['criteria'].items() if any(v.get(k,0)<1. for v in [m,*m.get('strata',{}).values()] for k in ('accuracy','format_accuracy','trace_accuracy'))]
     def bad(m, minimum=.95):
         return m['accuracy']<minimum or m['format_accuracy']<.95 or (not retention and m['trace_accuracy']<.90)
     return [c for c,m in report['criteria'].items() if bad(m,max(.95,(baseline or {}).get(c,{}).get('accuracy',0)))

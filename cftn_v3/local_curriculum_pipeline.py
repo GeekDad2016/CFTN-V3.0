@@ -25,7 +25,7 @@ def run(config):
             if item.get('stage_first'):command.append('--stage-first')
             if item.get('upgrade_recovery'):command.append('--upgrade-recovery')
             for key,value in item.get('policy',{}).items():
-                if key not in ('normal_rounds','remediation_rounds','attempts','examples','lr','validation_examples','retention_examples','consolidation_rounds','stage_rounds','full_check_every','sigreg_coefficient','validation_warmup_rounds','validation_loss_threshold','unbounded_loss_warmup'):
+                if key not in ('normal_rounds','remediation_rounds','attempts','examples','lr','validation_examples','retention_examples','consolidation_rounds','stage_rounds','full_check_every','sigreg_coefficient','validation_warmup_rounds','validation_loss_threshold','unbounded_loss_warmup','strict_first_stages'):
                     raise ValueError('Unknown training policy setting: '+key)
                 command.extend(['--'+key.replace('_','-'),str(value)])
             with (out/'training.stdout.log').open('a') as stdout,(out/'training.stderr.log').open('a') as stderr:

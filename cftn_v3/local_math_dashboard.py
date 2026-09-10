@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from .file_io import read_text_retry
+from .criterion_repair import failures
 
 def process_alive(pid):
     if not pid:return False
@@ -79,8 +80,11 @@ def snapshot(root):
                 and metrics.get('format_accuracy',0)>=.95 and (kind=='retention' or metrics.get('trace_accuracy',0)>=.90))
             passed=passed and all(m.get('accuracy',0)>=.95 and m.get('format_accuracy',0)>=.95
                 and (kind=='retention' or m.get('trace_accuracy',0)>=.90) for m in metrics.get('strata',{}).values())
+            strict=bool(status.get('strict_gate'))
+            if strict:
+                minimum=1.;passed=not failures({'criteria':{name:metrics}},retention=kind=='retention',strict=True)
             criterion_details.append({'name':name,'kind':kind,'metrics':metrics,'passed':passed,
-                'answer_threshold':minimum,'round':evidence_round,'evidence_kind':evidence_kind,
+                'answer_threshold':minimum,'format_threshold':1. if strict else .95,'trace_threshold':1. if strict else .90 if kind=='active' else None,'round':evidence_round,'evidence_kind':evidence_kind,
                 'samples':[r for r in report.get('samples',[]) if r.get('criterion')==name]})
     return {'status':status,'overfit':read(root/'overfit_test.json'),'queue':queue,
         'display_evaluation':{'kind':evidence_kind,'epoch':evidence_round,

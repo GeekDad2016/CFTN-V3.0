@@ -60,13 +60,14 @@ def run(args):
             meta={k:v for k,v in meta.items() if k in ('stage_index','completed','weak','retention_weak')}
             meta['round']=1
         policy={k:getattr(args,k) for k in ('normal_rounds','remediation_rounds','attempts','examples','lr','consolidation_rounds')}
+        policy.update(strict_first_stages=getattr(args,'strict_first_stages',0))
         policy.update(unbounded_loss_warmup=getattr(args,'unbounded_loss_warmup',0))
         policy.update(validation_loss_threshold=getattr(args,'validation_loss_threshold',0.))
         policy.update(validation_warmup_rounds=getattr(args,'validation_warmup_rounds',0))
         policy.update(sigreg_coefficient=getattr(args,'sigreg_coefficient',0.))
         policy.update(stage_rounds=getattr(args,'stage_rounds',240),full_check_every=getattr(args,'full_check_every',20))
         policy.update(validation_examples=getattr(args,'validation_examples',12),retention_examples=getattr(args,'retention_examples',4))
-        saved_policy={'unbounded_loss_warmup':0,'validation_loss_threshold':0.,'validation_warmup_rounds':0,'sigreg_coefficient':0.,'validation_examples':12,'retention_examples':4,**meta.get('policy',{})}
+        saved_policy={'strict_first_stages':0,'unbounded_loss_warmup':0,'validation_loss_threshold':0.,'validation_warmup_rounds':0,'sigreg_coefficient':0.,'validation_examples':12,'retention_examples':4,**meta.get('policy',{})}
         upgrading=resumed and meta.get('controller_version')==2 and getattr(args,'stage_first',False)
         if upgrading:
             if meta.get('dataset_hash')!=digest or any(saved_policy.get(k)!=policy[k] for k in ('examples','lr','validation_examples','retention_examples')):
@@ -85,6 +86,12 @@ def run(args):
             fresh.state.update(normal_done=normal_count,normal_total=normal_count,recovery_total=repair_count,legacy_recovery=repair_count)
             meta['controller']=fresh.state
             atomic(out/'stage_first_migration.json',{'resume_round':old_round,'normal_completed':normal_count,'recovery_completed':repair_count,'old_policy':saved_policy,'new_policy':policy,'backup':str(backup)})
+        elif resumed and saved_policy!=policy and meta.get('dataset_hash')==digest and all(saved_policy.get(k)==v for k,v in policy.items() if k!='strict_first_stages'):
+            import shutil
+            backup=out/'before_strict_foundation_gates.specialist'
+            if not backup.exists():shutil.copy2(latest,backup)
+            meta['controller'].update(streak=0,full_streak=0,full_pass_round=None)
+            meta['consecutive']=0;upgrading=True
         elif resumed and getattr(args,'upgrade_validation_warmup',False) and saved_policy!=policy:
             if meta.get('dataset_hash')!=digest or meta.get('controller_version')!=3 or any(saved_policy.get(k)!=v for k,v in policy.items() if k not in ('validation_warmup_rounds','validation_loss_threshold','unbounded_loss_warmup')):
                 raise ValueError('Warmup migration may only change validation scheduling')
@@ -126,13 +133,15 @@ def run(args):
             status(state='evaluating',evaluation=label,evaluation_done=0,evaluation_total=len(rows))
             return evaluate(model,rows,lambda done,total:status(evaluation_done=done,evaluation_total=total))
         for index in range(start_stage,len(manifest['stages'])):
+            strict_gate=index<policy['strict_first_stages']
+            def failed_criteria(report,retention=False,baseline=None):return failures(report,retention,baseline,strict=strict_gate)
             stage=manifest['stages'][index];phase=stage['name'];active=[r for r in train if r['stage']==index]
             prior=[r for r in train if r['stage']<index];validation=[r for r in dev if r['stage']==index]
             active_panel=panel(validation,policy['validation_examples']);retention_panel=panel([r for r in dev if r['stage']<index],policy['retention_examples'])
             controller=RepairController(args.normal_rounds,args.remediation_rounds,args.attempts,args.consolidation_rounds,
                 meta.get('controller') if index==start_stage else None)
             entry_path=out/f'{phase}_before.json'
-            status(phase=phase,stage_index=index,scope=stage['scope'],epoch=start_round if index==start_stage else 1,
+            status(phase=phase,stage_index=index,strict_gate=strict_gate,scope=stage['scope'],epoch=start_round if index==start_stage else 1,
                 stage_count=len(manifest['stages']),active_examples=len(active),completed=completed)
             if entry_path.exists():entry=json.loads(entry_path.read_text())
             elif validation_pending(controller.state,policy):
@@ -278,7 +287,7 @@ def run(args):
         test=read(data/'test.jsonl');results={}
         for stage in manifest['stages']:
             results[stage['name']]=ev(panel([r for r in test if r['stage']==stage['index']],32),'sealed test: '+stage['name'])
-        accepted=all(not failed_criteria(r) for r in results.values());atomic(out/'final_test.json',{'accepted':accepted,'stages':results})
+        accepted=all(not failures(results[stage['name']],strict=stage['index']<policy['strict_first_stages']) for stage in manifest['stages']);atomic(out/'final_test.json',{'accepted':accepted,'stages':results})
         save(len(manifest['stages']),1,accepted=accepted,terminal=None if accepted else 'Sealed test failed')
         if accepted:save_specialist(out/(tower+'.specialist'),model,meta)
         status(state='complete' if accepted else 'blocked',accepted=accepted,reason='All gates passed' if accepted else 'Sealed test failed')
@@ -290,7 +299,7 @@ if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--data',required=True);p.add_argument('--output',required=True);p.add_argument('--initial-checkpoint',required=True)
     p.add_argument('--normal-rounds',type=int,default=8);p.add_argument('--remediation-rounds',type=int,default=6)
     p.add_argument('--attempts',type=int,default=3);p.add_argument('--examples',type=int,default=2048);p.add_argument('--lr',type=float,default=5e-5)
-    p.add_argument('--unbounded-loss-warmup',type=int,choices=(0,1),default=0);p.add_argument('--validation-loss-threshold',type=float,default=0.);p.add_argument('--validation-warmup-rounds',type=int,default=0);p.add_argument('--upgrade-validation-warmup',action='store_true')
+    p.add_argument('--strict-first-stages',type=int,default=0);p.add_argument('--unbounded-loss-warmup',type=int,choices=(0,1),default=0);p.add_argument('--validation-loss-threshold',type=float,default=0.);p.add_argument('--validation-warmup-rounds',type=int,default=0);p.add_argument('--upgrade-validation-warmup',action='store_true')
     p.add_argument('--sigreg-coefficient',type=float,default=0.)
     p.add_argument('--stage-first',action='store_true')
     p.add_argument('--stage-rounds',type=int,default=240);p.add_argument('--full-check-every',type=int,default=20);p.add_argument('--upgrade-recovery',action='store_true')
