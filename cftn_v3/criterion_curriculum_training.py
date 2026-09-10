@@ -150,12 +150,12 @@ def run(args):
                 begun=time.time();mode=controller.state['mode'];focus=controller.state['focus']
                 warmup=validation_pending(controller.state,policy)
                 if policy['unbounded_loss_warmup']:
-                    maxround=None if warmup else controller.state['validation_start_round']+args.normal_rounds*(args.attempts+1)+args.remediation_rounds*args.attempts-1
+                    maxround=None if warmup else (round_ if controller.state.get('recovery_queue') else controller.state['validation_start_round'])+args.normal_rounds*(args.attempts+1)+args.remediation_rounds*args.attempts-1
                 if maxround is not None and round_>maxround:
                     save(index,round_,terminal='Stage round budget exhausted without two consecutive full passes')
                     status(state='blocked',reason='Stage round budget exhausted without two consecutive full passes; no stage skipped');return
                 attempt=controller.state['attempt_counts'].get(focus,0)
-                status(epoch=round_,epochs=maxround,remediation_attempt=attempt,remediation_criteria=[focus] if mode=='repair' else weak,
+                status(epoch=round_,epochs=maxround,recovery_queue=controller.state.get('recovery_queue'),remediation_attempt=attempt,remediation_criteria=[focus] if mode=='repair' else weak,
                     training_mode=mode,focused_criterion=focus if mode=='repair' else None,
                     consolidation_done=controller.state['consolidation_done'],step=cursor,
                     normal_done=controller.state['normal_done'],normal_total=controller.state.get('normal_total',0),
@@ -241,6 +241,18 @@ def run(args):
                     'retention_failed_criteria':retention_weak,'elapsed':time.time()-begun}
                 atomic(out/f'{phase}_epoch_{round_:03d}.json',report)
                 save(index,round_+1);status(state='evaluated',passed=passed,accuracy=observed['accuracy'],retention=retained['accuracy'],consolidation_done=controller.state['consolidation_done'])
+                if controller.state.get('recovery_queue') and (controller.state['repair_done']%5==0 or controller.state.get('recovery_gate_streak',0)>0):
+                    focused_rows=panel([r for r in validation if r['criterion']==controller.state['focus']],100000)
+                    focused_report=ev(focused_rows,'complete focused recovery validation')
+                    status(recovery_check_criterion=controller.state['focus'],recovery_check_round=round_,recovery_check_accuracy=focused_report['accuracy'],recovery_check_examples=len(focused_rows),recovery_check_passed=not failed_criteria(focused_report))
+                    atomic(out/f'{phase}_recovery_gate_{round_:06d}.json',{'phase':phase,'epoch':round_,'criterion':controller.state['focus'],'active':focused_report})
+                    try:
+                        controller.recovery_result(failed_criteria(focused_report))
+                        if not controller.state.get('recovery_queue'):controller.state['validation_start_round']=round_+1
+                    except RuntimeError as exc:
+                        save(index,round_+1,terminal=str(exc));status(state='blocked',reason=str(exc));return
+                    save(index,round_+1)
+                    status(recovery_queue=controller.state.get('recovery_queue'),recovery_gate_streak=controller.state.get('recovery_gate_streak'),training_mode=controller.state['mode'])
                 if controller.due(round_,policy['full_check_every'],maxround):
                     full=ev(panel(validation,100000),'complete stage validation')
                     cumulative=ev(panel([r for r in dev if r['stage']<index],100000),'complete retention gate')

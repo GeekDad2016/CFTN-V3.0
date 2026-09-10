@@ -5,7 +5,7 @@
       "tower": "math",
       "trainer": "criterion",
       "inherit_progress": true,
-      "data": "G:/ctfn-text/data/v3_full_math_v4",
+      "data": "G:\\ctfn-text\\data\\v3_math_recovery_v5",
       "output": "G:/ctfn-text/artifacts/v3_curriculum_v4/math",
       "initial_checkpoint": "G:/ctfn-text/artifacts/v3_curriculum_v3/math/current.specialist",
       "policy": {

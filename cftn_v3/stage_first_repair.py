@@ -14,6 +14,11 @@ class StageFirstController(ScheduledRepairController):
     def observe(self,weak,retained):
         s=self.state;passed=not weak and not retained
         s['streak']=s['streak']+1 if passed else 0
+        if s['mode']=='repair' and s.get('recovery_queue'):
+            s['repair_done']+=1;s['recovery_total']=s.get('recovery_total',0)+1
+            s['focus_streak']=s.get('focus_streak',0)+1 if s['focus'] not in weak+retained else 0
+            # Queue advances only after its full focused held-out panel passes twice.
+            return False
         if s['mode']=='repair':
             s['repair_done']+=1;s['recovery_total']=s.get('recovery_total',0)+1
             s['focus_streak']=s.get('focus_streak',0)+1 if s['focus'] not in weak+retained else 0
@@ -25,6 +30,7 @@ class StageFirstController(ScheduledRepairController):
 
     def due(self,round_,interval,maximum):
         s=self.state
+        if s.get('recovery_queue'):return False
         return (round_%interval==0 or round_==maximum or s.get('full_pass_round')==round_-1
                 or s['mode']=='normal' and (s['normal_done']>=self.normal or s['normal_done']>=self.consolidation and s['streak']>=2))
 
@@ -45,9 +51,23 @@ class StageFirstController(ScheduledRepairController):
             return False
         return s['normal_done']>=self.consolidation and s['full_streak']>=2
 
+    def recovery_result(self,weak):
+        s=self.state
+        s['recovery_gate_streak']=s.get('recovery_gate_streak',0)+1 if s['focus'] not in weak else 0
+        if s['recovery_gate_streak']>=2:
+            s['recovery_queue'].pop(0);s['recovery_gate_streak']=0;s['repair_done']=0
+            if s['recovery_queue']:s['focus']=s['recovery_queue'][0]
+            else:s.update(mode='normal',focus=None,normal_done=0,streak=0,full_streak=0,full_pass_round=None)
+        elif s['repair_done']>=240:
+            raise RuntimeError('Targeted recovery did not pass within 240 rounds; inspect recovery evidence')
+
     def rows(self,active,prior,count,seed):
         if self.state['mode']!='repair':return super().rows(active,prior,count,seed)
         focus=self.state['focus'];pool=[r for r in active+prior if r['criterion']==focus]
         replay=[r for r in active+prior if r['criterion']!=focus]
+        if self.state.get('recovery_queue'):
+            # Equal weight for original/direct cases and explicit scaffold cases.
+            fresh=[r for r in pool if r.get('source_record')=='arithmetic_recovery_v1']
+            pool=fresh or pool
         n=count*4//5 if replay else count
         return BalancedSampler(pool).sample(n,seed)+BalancedSampler(replay).sample(count-n,seed+1)

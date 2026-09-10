@@ -25,6 +25,9 @@ def polynomial(a,x):return sum((Q(c)*Q(x)**i for i,c in enumerate(a)),Q(0))
 
 
 def solve(ir):
+    if ir.get('detail')=='place_value_v1':
+        from .arithmetic_scaffold import solve_scaffold
+        return solve_scaffold(ir)
     op=ir['op'];steps=[]
     def eq(lhs,result):steps.append(f'{lhs}={fmt(result)}');return result
     def n(x):return f'({x})' if Q(x)<0 else str(x)

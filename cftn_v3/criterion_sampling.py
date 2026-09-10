@@ -8,6 +8,7 @@ COMPARISONS={'compare','compare_expressions','compare_place_value'}
 BOOLEAN={'polynomial_identity','geometric_series_point'}
 
 def decision(row):
+    if row.get('recovery_case'):return row['recovery_case']
     op=row['ir']['op']
     if op in COMPARISONS or op in BOOLEAN or op=='contains':return row['answer']
     return None
