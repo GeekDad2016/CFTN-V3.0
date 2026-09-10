@@ -1,4 +1,4 @@
-param([string]$Python='C:/Users/adria/anaconda3/python.exe', [string]$ConfigFile='config/local_curriculum_v4.json')
+param([string]$Python='C:/Users/adria/anaconda3/python.exe', [string]$ConfigFile='config/local_curriculum_v31.json')
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path $PSScriptRoot -Parent
 $configPath=Join-Path $projectRoot $ConfigFile

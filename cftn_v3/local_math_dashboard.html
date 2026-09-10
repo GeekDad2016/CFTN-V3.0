@@ -1,10 +1,10 @@
 <!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CFTN | Local training</title>
+<title>CFTN V3.1 | Local training</title>
 <style>
 body{background:#101827;color:#e2e8f0;font:16px system-ui;max-width:1180px;margin:32px auto;padding:0 20px}h1{font-size:30px}section,.card{background:#1e293b;padding:22px;border-radius:12px;margin:16px 0}h2{font-size:20px;margin-top:0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}.card{margin:0}.value{font-size:30px;font-weight:700;color:#5eead4}.muted,small{color:#94a3b8}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:14px monospace}table{width:100%;border-collapse:collapse}td,th{padding:10px;text-align:left;border-bottom:1px solid #334155}.scroll{overflow:auto}#state{color:#fbbf24}canvas{width:100%;height:220px}details{padding:12px;border-bottom:1px solid #334155}summary{cursor:pointer}#connection{color:#5eead4}a{color:#5eead4}
 .criterion-pass>summary{color:#4ade80}.criterion-fail>summary{color:#f87171}.criterion summary{font-weight:600;line-height:1.7}.criterion .result{border-left:3px solid #475569;padding:8px 16px;margin:14px 0}.criterion .result-fail{border-color:#f87171}#training-status .grid{margin-top:20px}#training-status .card{background:#142033}
 </style>
-<h1>CFTN | Local training</h1><p class="muted" id="subtitle">Local RTX 4070 | Dashboard v2</p>
+<h1>CFTN V3.1 | Local training</h1><p class="muted" id="subtitle">V3.1 | Local RTX 4070 | Fresh maths training</p>
 <p id="connection" role="status">Connecting to saved training results...</p>
 <section id="training-status"><h2 id="state">Loading training state...</h2><p id="reason"></p><p id="progress"></p><small id="updated"></small><p><button id="validate-now" style="padding:10px 16px;cursor:pointer">Validate after this round</button> <span id="validation-request" role="status"></span></p>
 <div class="grid"><div class="card">Validation answers<div class="value" id="accuracy">-</div><small id="count"></small></div><div class="card">Worked traces<div class="value" id="trace">-</div></div><div class="card">Retention<div class="value" id="retention">-</div><small id="baseline"></small></div><div class="card">Training loss<div class="value" id="loss">-</div></div></div>

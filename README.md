@@ -1,3 +1,7 @@
+# V3.1 local maths training revision
+
+Fresh 9.32M-parameter maths tower (+29.98%), integrated remediation and early place-value scaffolds. Current run: `config/local_curriculum_v31.json`. See [V3.1 training details](docs/v3_1_training.md). V3.0 checkpoints remain preserved separately.
+
 # CFTN V3.0
 
 ### Automatic learning experiment

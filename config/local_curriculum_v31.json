@@ -1,0 +1,52 @@
+{
+  "root": "G:\\ctfn-text\\artifacts\\v3_1",
+  "queue": [
+    {
+      "tower": "math",
+      "trainer": "criterion",
+      "data": "G:/ctfn-text/data/v3_1_main",
+      "output": "G:\\ctfn-text\\artifacts\\v3_1\\math",
+      "initial_checkpoint": "G:\\ctfn-text\\artifacts\\v3_1\\initial_math.specialist",
+      "policy": {
+        "normal_rounds": 240,
+        "remediation_rounds": 30,
+        "attempts": 4,
+        "examples": 4096,
+        "lr": 1e-05,
+        "validation_examples": 32,
+        "retention_examples": 8,
+        "consolidation_rounds": 3,
+        "stage_rounds": 240,
+        "full_check_every": 20,
+        "sigreg_coefficient": 0.0003,
+        "validation_warmup_rounds": 0,
+        "validation_loss_threshold": 0.003,
+        "unbounded_loss_warmup": 1
+      },
+      "stage_first": true
+    },
+    {
+      "tower": "string",
+      "trainer": "criterion",
+      "data": "G:/ctfn-text/data/v3_string_v3",
+      "output": "G:\\ctfn-text\\artifacts\\v3_1\\string",
+      "initial_checkpoint": "G:/ctfn-text/data/v3_string_v3/initial.specialist",
+      "policy": {
+        "normal_rounds": 240,
+        "remediation_rounds": 30,
+        "attempts": 4,
+        "examples": 4096,
+        "lr": 1e-05,
+        "validation_examples": 32,
+        "retention_examples": 8,
+        "consolidation_rounds": 3,
+        "stage_rounds": 240,
+        "full_check_every": 20,
+        "validation_warmup_rounds": 0,
+        "validation_loss_threshold": 0.0005,
+        "unbounded_loss_warmup": 1
+      },
+      "stage_first": true
+    }
+  ]
+}
