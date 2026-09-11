@@ -4,7 +4,7 @@
     {
       "tower": "math",
       "trainer": "criterion",
-      "data": "G:\\ctfn-text\\data\\v3_1_equality_v2",
+      "data": "G:\\ctfn-text\\data\\v3_1_foundation_v3",
       "output": "G:\\ctfn-text\\artifacts\\v3_1\\math",
       "initial_checkpoint": "G:\\ctfn-text\\artifacts\\v3_1\\initial_math.specialist",
       "policy": {

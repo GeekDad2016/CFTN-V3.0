@@ -26,7 +26,11 @@ def case(row):
     if op in COMPARISONS:
         a,b=comparison_values(ir);gap=abs(a-b)
         pair=ir.get('left_op','')+'/'+ir.get('right_op','')
-        return pair+('/equal' if gap==0 else '/adjacent' if gap==1 else '/separated')
+        band='small_0_100' if max(abs(a),abs(b))<=100 else 'medium_101_1000' if max(abs(a),abs(b))<=1000 else 'large_1001_plus'
+        return band+'/'+pair+('/equal' if gap==0 else '/adjacent' if gap==1 else '/separated')
+    if op in ('successor','predecessor','missing_count_sequence'):
+        value=ir.get('value',max((x for x in ir.get('sequence',[]) if x is not None),default=0))
+        return 'small_0_100' if value<=100 else 'larger'
     if op=='add':return 'terms_'+str(len(ir.get('operands',[ir.get('left'),ir.get('right')])))
     if op=='power':return 'nonnegative_base' if ir['base']>=0 else 'negative_even' if ir['exponent']%2==0 else 'negative_odd'
     if op=='count':return 'zero' if row['answer']=='0' else 'nonzero'
