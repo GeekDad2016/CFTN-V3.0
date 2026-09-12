@@ -158,6 +158,7 @@ def run(args):
             for round_ in itertools.count(start_round if index==start_stage else 1):
                 begun=time.time();mode=controller.state['mode'];focus=controller.state['focus']
                 warmup=validation_pending(controller.state,policy)
+                forced_rounds=controller.state.get('training_only_rounds_remaining',0)
                 if policy['unbounded_loss_warmup']:
                     maxround=None if warmup else (round_ if controller.state.get('recovery_queue') else controller.state['validation_start_round'])+args.normal_rounds*(args.attempts+1)+args.remediation_rounds*args.attempts-1
                 if maxround is not None and round_>maxround:
@@ -171,7 +172,8 @@ def run(args):
                     recovery_total=controller.state.get('recovery_total',0),recovery_blocks=controller.state.get('recovery_blocks',0),
                     validation_suppressed=warmup,validation_loss_threshold=policy['validation_loss_threshold'],round_mean_loss=controller.state.get('round_mean_loss'),
                     validation_resumes_normal_round=None if policy['validation_loss_threshold'] else policy['validation_warmup_rounds']+1,
-                    next_routine_check=None if warmup and policy['validation_loss_threshold'] else round_+policy['validation_warmup_rounds']-controller.state.get('normal_total',controller.state['normal_done']) if warmup else round_,
+                    training_only_rounds_remaining=forced_rounds,
+                    next_routine_check=round_+forced_rounds if forced_rounds else None if warmup and policy['validation_loss_threshold'] else round_+policy['validation_warmup_rounds']-controller.state.get('normal_total',controller.state['normal_done']) if warmup else round_,
                     next_full_check=None if warmup else controller.next_check(round_,policy['full_check_every'],maxround),
                     full_consecutive=controller.state.get('full_streak',0))
                 seed=9307+index*100000+round_
@@ -202,7 +204,7 @@ def run(args):
                 cursor=0
                 mean_loss=controller.state['round_loss_sum']/controller.state['round_loss_count'] if controller.state.get('round_loss_count') else None
                 controller.state['round_mean_loss']=mean_loss if complete_loss else None
-                if warmup and policy['validation_loss_threshold'] and unlock_validation(controller.state,policy,mean_loss if complete_loss else None):
+                if warmup and not forced_rounds and policy['validation_loss_threshold'] and unlock_validation(controller.state,policy,mean_loss if complete_loss else None):
                     warmup=False
                     if policy['unbounded_loss_warmup']:
                         controller.state['validation_start_round']=round_
@@ -225,7 +227,10 @@ def run(args):
                     status(manual_validation='complete',evaluation=None,state='training')
 
                 if warmup:
-                    controller.state['normal_done']+=1
+                    if forced_rounds:
+                        controller.state['training_only_rounds_remaining']=forced_rounds-1
+                    else:
+                        controller.state['normal_done']+=1
                     controller.state['normal_total']=controller.state.get('normal_total',0)+1
                     controller.state.update(streak=0,full_streak=0,full_pass_round=None)
                     consecutive=0
@@ -233,7 +238,8 @@ def run(args):
                         'normal_total':controller.state['normal_total'],'loss':sum(losses)/len(losses) if losses else current.get('loss')})
                     save(index,round_+1)
                     status(state='training',normal_done=controller.state['normal_done'],normal_total=controller.state['normal_total'],
-                        reason=('Training until round-average CE loss <= '+str(policy['validation_loss_threshold'])+('; no round limit before threshold' if policy['unbounded_loss_warmup'] else '; budget-end evaluation remains required')) if policy['validation_loss_threshold'] else 'Initial normal training; validation starts at normal round '+str(policy['validation_warmup_rounds']+1),passed=None)
+                        training_only_rounds_remaining=max(0,forced_rounds-1),
+                        reason=(str(forced_rounds-1)+' requested training-only rounds remain; normal validation follows') if forced_rounds else ('Training until round-average CE loss <= '+str(policy['validation_loss_threshold'])+('; no round limit before threshold' if policy['unbounded_loss_warmup'] else '; budget-end evaluation remains required')) if policy['validation_loss_threshold'] else 'Initial normal training; validation starts at normal round '+str(policy['validation_warmup_rounds']+1),passed=None)
                     continue
                 status(reason=None)
                 observed=ev(active_panel,'active validation');retained=ev(retention_panel,'prior-stage retention')

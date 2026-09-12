@@ -2,6 +2,8 @@
 import math
 
 def validation_pending(state, policy):
+    if state.get('training_only_rounds_remaining', 0) > 0:
+        return True
     if state['mode'] != 'normal' or state.get('validation_enabled', False):
         return False
     if policy.get('validation_loss_threshold', 0):
