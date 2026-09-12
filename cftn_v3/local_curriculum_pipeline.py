@@ -13,6 +13,8 @@ def run(config):
     config=Path(config);cfg=json.loads(config.read_text());root=Path(cfg['root']);root.mkdir(parents=True,exist_ok=True)
     lock=root/'pipeline.lock';fd=os.open(lock,os.O_CREAT|os.O_EXCL|os.O_WRONLY);os.write(fd,str(os.getpid()).encode());os.close(fd)
     try:
+        from .pending_correction_policy import apply
+        cfg=apply(config,cfg,root)
         for item in cfg['queue']:
             out=Path(item['output']);out.mkdir(parents=True,exist_ok=True)
             atomic(root/'queue.json',{'state':'running','current':item['tower'],'output':str(out),'pid':os.getpid(),'queue':cfg['queue'],'updated':time.time()})
@@ -25,7 +27,7 @@ def run(config):
             if item.get('stage_first'):command.append('--stage-first')
             if item.get('upgrade_recovery'):command.append('--upgrade-recovery')
             for key,value in item.get('policy',{}).items():
-                if key not in ('normal_rounds','remediation_rounds','attempts','examples','lr','validation_examples','retention_examples','consolidation_rounds','stage_rounds','full_check_every','sigreg_coefficient','validation_warmup_rounds','validation_loss_threshold','unbounded_loss_warmup','strict_first_stages'):
+                if key not in ('normal_rounds','remediation_rounds','attempts','examples','lr','validation_examples','retention_examples','consolidation_rounds','stage_rounds','full_check_every','sigreg_coefficient','validation_warmup_rounds','validation_loss_threshold','unbounded_loss_warmup','strict_first_stages','generated_correction'):
                     raise ValueError('Unknown training policy setting: '+key)
                 command.extend(['--'+key.replace('_','-'),str(value)])
             with (out/'training.stdout.log').open('a') as stdout,(out/'training.stderr.log').open('a') as stderr:

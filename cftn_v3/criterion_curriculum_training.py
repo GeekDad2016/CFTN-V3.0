@@ -61,13 +61,14 @@ def run(args):
             meta['round']=1
         policy={k:getattr(args,k) for k in ('normal_rounds','remediation_rounds','attempts','examples','lr','consolidation_rounds')}
         policy.update(strict_first_stages=getattr(args,'strict_first_stages',0))
+        policy.update(generated_correction=getattr(args,'generated_correction',0))
         policy.update(unbounded_loss_warmup=getattr(args,'unbounded_loss_warmup',0))
         policy.update(validation_loss_threshold=getattr(args,'validation_loss_threshold',0.))
         policy.update(validation_warmup_rounds=getattr(args,'validation_warmup_rounds',0))
         policy.update(sigreg_coefficient=getattr(args,'sigreg_coefficient',0.))
         policy.update(stage_rounds=getattr(args,'stage_rounds',240),full_check_every=getattr(args,'full_check_every',20))
         policy.update(validation_examples=getattr(args,'validation_examples',12),retention_examples=getattr(args,'retention_examples',4))
-        saved_policy={'strict_first_stages':0,'unbounded_loss_warmup':0,'validation_loss_threshold':0.,'validation_warmup_rounds':0,'sigreg_coefficient':0.,'validation_examples':12,'retention_examples':4,**meta.get('policy',{})}
+        saved_policy={'generated_correction':0,'strict_first_stages':0,'unbounded_loss_warmup':0,'validation_loss_threshold':0.,'validation_warmup_rounds':0,'sigreg_coefficient':0.,'validation_examples':12,'retention_examples':4,**meta.get('policy',{})}
         upgrading=resumed and meta.get('controller_version')==2 and getattr(args,'stage_first',False)
         if upgrading:
             if meta.get('dataset_hash')!=digest or any(saved_policy.get(k)!=policy[k] for k in ('examples','lr','validation_examples','retention_examples')):
@@ -138,6 +139,14 @@ def run(args):
             stage=manifest['stages'][index];phase=stage['name'];active=[r for r in train if r['stage']==index]
             prior=[r for r in train if r['stage']<index];validation=[r for r in dev if r['stage']==index]
             active_panel=panel(validation,policy['validation_examples']);retention_panel=panel([r for r in dev if r['stage']<index],policy['retention_examples'])
+            if policy['generated_correction']:
+                if tower!='math':raise ValueError('Generated maths correction is only supported for math')
+                from .balanced_curriculum_data import comparison_family
+                from . import stage_corrections
+                held=dev+read(data/'test.jsonl')
+                if (data/'quarantined_heldout.jsonl').exists():
+                    held += [r.get('record',r) for r in read(data/'quarantined_heldout.jsonl')]
+                reserved={comparison_family(r['ir']) for r in held}
             controller=RepairController(args.normal_rounds,args.remediation_rounds,args.attempts,args.consolidation_rounds,
                 meta.get('controller') if index==start_stage else None)
             entry_path=out/f'{phase}_before.json'
@@ -177,8 +186,25 @@ def run(args):
                     next_full_check=None if warmup else controller.next_check(round_,policy['full_check_every'],maxround),
                     full_consecutive=controller.state.get('full_streak',0))
                 seed=9307+index*100000+round_
+                if policy['generated_correction'] and stage_corrections.due(controller.state,round_,warmup) and not cursor:
+                    mining=stage_corrections.mining_panel(active,prior,reserved,seed)
+                    evidence=[];ids=[]
+                    status(state='evaluating',evaluation='Mining generated training errors',evaluation_done=0,evaluation_total=len(mining))
+                    for n,r in enumerate(mining,1):
+                        output,complete=model.generate(r['prompt'],max_tokens=max(384,len(MathTokenizer().encode(r['target']))+32))
+                        feedback=stage_corrections.check(r,output,complete)
+                        evidence.append({'semantic_id':r['semantic_id'],'prompt':r['prompt'],'output':output,'target':r['target'],'feedback':feedback})
+                        if feedback['needs_correction']:ids.append(r['semantic_id'])
+                        if n%8==0:status(evaluation_done=n,generated_failures=len(ids))
+                        if (out/'STOP').exists():
+                            save(index,round_,cursor);status(state='paused',reason='Stopped during training-error mining; weights saved');return
+                    atomic(out/f'{phase}_generated_errors_{round_:06d}.json',{'epoch':round_,'training_only':True,'examples':len(mining),'failures':len(ids),'samples':evidence})
+                    controller.state.update(correction_ids=ids,correction_mined_round=round_,correction_rounds_remaining=5 if ids else 0)
+                    save(index,round_,cursor)
+                correcting=bool(policy['generated_correction'] and not warmup and mode=='normal' and controller.state.get('correction_rounds_remaining',0)>0)
                 # Active training is 75%, prior accepted skills 25%; stage zero has no replay.
-                rows=controller.rows(active,prior,args.examples,seed)
+                rows=stage_corrections.rows(controller.state,active,prior,args.examples,seed) if correcting else controller.rows(active,prior,args.examples,seed)
+                status(supervised_correction=correcting,correction_rounds_remaining=controller.state.get('correction_rounds_remaining',0),generated_failures=len(controller.state.get('correction_ids',[])))
                 random.Random(seed).shuffle(rows)
                 status(batch_criteria=dict(collections.Counter(r['criterion'] for r in rows)),
                     batch_decisions=dict(collections.Counter(r['answer'] for r in rows)) if mode=='repair' else {})
@@ -202,6 +228,7 @@ def run(args):
                     if (step+1)%100==0 or (out/'STOP').exists():save(index,round_,step+1)
                     if (out/'STOP').exists():status(state='paused',reason='Safe stop requested; optimizer and cursor saved');return
                 cursor=0
+                if correcting:controller.state['correction_rounds_remaining']-=1
                 mean_loss=controller.state['round_loss_sum']/controller.state['round_loss_count'] if controller.state.get('round_loss_count') else None
                 controller.state['round_mean_loss']=mean_loss if complete_loss else None
                 if warmup and not forced_rounds and policy['validation_loss_threshold'] and unlock_validation(controller.state,policy,mean_loss if complete_loss else None):
@@ -317,6 +344,7 @@ if __name__=='__main__':
     p.add_argument('--strict-first-stages',type=int,default=0);p.add_argument('--unbounded-loss-warmup',type=int,choices=(0,1),default=0);p.add_argument('--validation-loss-threshold',type=float,default=0.);p.add_argument('--validation-warmup-rounds',type=int,default=0);p.add_argument('--upgrade-validation-warmup',action='store_true')
     p.add_argument('--sigreg-coefficient',type=float,default=0.)
     p.add_argument('--stage-first',action='store_true')
+    p.add_argument('--generated-correction',type=int,choices=(0,1),default=0)
     p.add_argument('--stage-rounds',type=int,default=240);p.add_argument('--full-check-every',type=int,default=20);p.add_argument('--upgrade-recovery',action='store_true')
     p.add_argument('--inherit-progress',action='store_true');p.add_argument('--consolidation-rounds',type=int,default=3)
     p.add_argument('--validation-examples',type=int,default=12);p.add_argument('--retention-examples',type=int,default=4)

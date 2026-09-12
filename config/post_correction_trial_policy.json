@@ -1,0 +1,5 @@
+{
+  "sigreg_coefficient": 0.0003,
+  "validation_loss_threshold": 0.003,
+  "enable_only_if_trial_selects_targeted": true
+}
