@@ -8,6 +8,9 @@ class StageFirstController(ScheduledRepairController):
         if self.state.get('recovery_blocks',0)>=self.attempts:
             raise RuntimeError('Normal and recovery cycle budget exhausted')
         super().focus(weak,retained)
+        if self.state.get('subskill_recovery') and self.state.get('pending_subskills'):
+            self.state.update(recovery_queue=list(self.state['pending_subskills']),
+                              focus=self.state['pending_subskills'][0],recovery_gate_streak=0)
         self.state['focus_streak']=0
         self.state['recovery_blocks']=self.state.get('recovery_blocks',0)+1
 
@@ -63,6 +66,9 @@ class StageFirstController(ScheduledRepairController):
 
     def rows(self,active,prior,count,seed):
         if self.state['mode']!='repair':return super().rows(active,prior,count,seed)
+        if self.state.get('subskill_recovery') and self.state.get('recovery_queue'):
+            from .subskill_recovery import sample
+            return sample(active,prior,self.state['focus'],count,seed)
         focus=self.state['focus'];pool=[r for r in active+prior if r['criterion']==focus]
         replay=[r for r in active+prior if r['criterion']!=focus]
         if self.state.get('recovery_queue'):

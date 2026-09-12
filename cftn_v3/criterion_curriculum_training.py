@@ -251,12 +251,18 @@ def run(args):
                 atomic(out/f'{phase}_epoch_{round_:03d}.json',report)
                 save(index,round_+1);status(state='evaluated',passed=passed,accuracy=observed['accuracy'],retention=retained['accuracy'],consolidation_done=controller.state['consolidation_done'])
                 if controller.state.get('recovery_queue') and (controller.state['repair_done']%5==0 or controller.state.get('recovery_gate_streak',0)>0):
-                    focused_rows=panel([r for r in validation if r['criterion']==controller.state['focus']],100000)
+                    if controller.state.get('subskill_recovery'):
+                        from .subskill_recovery import matches
+                        focused_rows=panel([r for r in validation if matches(r,controller.state['focus'])],100000)
+                    else:
+                        focused_rows=panel([r for r in validation if r['criterion']==controller.state['focus']],100000)
+                    if not focused_rows:raise ValueError('Focused recovery has no held-out questions')
                     focused_report=ev(focused_rows,'complete focused recovery validation')
                     status(recovery_check_criterion=controller.state['focus'],recovery_check_round=round_,recovery_check_accuracy=focused_report['accuracy'],recovery_check_examples=len(focused_rows),recovery_check_passed=not failed_criteria(focused_report))
                     atomic(out/f'{phase}_recovery_gate_{round_:06d}.json',{'phase':phase,'epoch':round_,'criterion':controller.state['focus'],'active':focused_report})
                     try:
-                        controller.recovery_result(failed_criteria(focused_report))
+                        focused_fail=failed_criteria(focused_report)
+                        controller.recovery_result([controller.state['focus']] if focused_fail else [])
                         if not controller.state.get('recovery_queue'):controller.state['validation_start_round']=round_+1
                     except RuntimeError as exc:
                         save(index,round_+1,terminal=str(exc));status(state='blocked',reason=str(exc));return
@@ -266,6 +272,9 @@ def run(args):
                     full=ev(panel(validation,100000),'complete stage validation')
                     cumulative=ev(panel([r for r in dev if r['stage']<index],100000),'complete retention gate')
                     full_fail=failed_criteria(full);cum_fail=failed_criteria(cumulative,True)
+                    if controller.state.get('subskill_recovery'):
+                        from .subskill_recovery import failed_subskills
+                        controller.state['pending_subskills']=failed_subskills(full,panel(validation,100000))
                     try:promoted=controller.full_result(round_,full_fail,cum_fail)
                     except RuntimeError as exc:
                         save(index,round_+1,terminal=str(exc));status(state='blocked',reason=str(exc));return
