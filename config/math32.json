@@ -1,0 +1,15 @@
+{
+  "root": "G:/ctfn-text/artifacts/v3_2",
+  "data": "G:/ctfn-text/data/v3_2",
+  "seed": 3209307,
+  "model": {"d": 384, "layers": 6, "heads": 6, "ff": 1536, "context": 256},
+  "lr": 0.0003,
+  "lr_warmup_updates": 300,
+  "sigreg": 0.0003,
+  "loss_threshold": 0.003,
+  "examples": 4096,
+  "batch_size": 64,
+  "normal_rounds": 240,
+  "repair_rounds": 30,
+  "eval_every": 20
+}
