@@ -53,9 +53,19 @@ def run(config):
                'validation_enabled':all_dataset,'normal_done':0,'streak':0,'mode':'normal','repair_done':0,'repair_cycles':0}
         path=root/'current.specialist';binding=hashlib.sha256((data/'manifest.json').read_bytes()).hexdigest()
         if path.exists():
-            p=torch.load(path,map_location='cpu',weights_only=True);assert p['dataset_hash']==binding and p['config']==cfg
+            p=torch.load(path,map_location='cpu',weights_only=True);assert p['dataset_hash']==binding
+            # Duration and validation cadence can change after a clean pause;
+            # architecture, data and optimizer scale cannot.
+            prior_cfg=p['config']
+            immutable=('data','seed','model','lr','lr_warmup_updates','sigreg','batch_size','training_scope')
+            assert all(prior_cfg.get(k)==cfg.get(k) for k in immutable)
             model.load_state_dict(p['weights']);opt.load_state_dict(p['optimizer']);state=p['state']
             torch.set_rng_state(p['rng']);torch.cuda.set_rng_state_all(p['cuda_rng'])
+        if all_dataset:
+            gate=cfg.get('all_dataset_validation_loss',cfg['loss_threshold'])
+            if state.get('all_dataset_validation_loss')!=gate:
+                state['validation_enabled']=False
+                state['all_dataset_validation_loss']=gate
         def save():
             payload={'format':'math32','config':cfg,'dataset_hash':binding,'vocab':tok.vocab,
                 'weights':{k:v.detach().cpu().clone() for k,v in model.state_dict().items()},'optimizer':opt.state_dict(),
@@ -66,7 +76,7 @@ def run(config):
                strict_gate=True,checkpoint=str(path),gpu=torch.cuda.get_device_name(),stage_count=len(manifest['stages']))
         if state.get('terminal'):status(state='blocked',reason=state['terminal']);return
         if not path.exists():save()
-        while (state['round']<=cfg['all_dataset_epochs'] if all_dataset else state['stage']<len(manifest['stages'])):
+        while ((cfg.get('all_dataset_epochs') is None or state['round']<=cfg['all_dataset_epochs']) if all_dataset else state['stage']<len(manifest['stages'])):
             idx=state['stage'];stage=manifest['stages'][idx];phase=stage['name']
             active=records['train'] if all_dataset else [r for r in records['train'] if r['stage']==idx]
             prior=[] if all_dataset else [r for r in records['train'] if r['stage']<idx]
@@ -80,9 +90,9 @@ def run(config):
             round_=state['round'];seed=cfg['seed']+idx*100000+round_
             status(phase='all_criteria_full_dataset' if all_dataset else phase,
                 scope='Every record in the V3.2 training split, shuffled once per epoch' if all_dataset else stage['scope'],
-                stage_index=None if all_dataset else idx,epoch=round_,epochs=cfg['all_dataset_epochs'] if all_dataset else cfg['normal_rounds'],
+                stage_index=None if all_dataset else idx,epoch=round_,epochs=cfg.get('all_dataset_epochs') if all_dataset else cfg['normal_rounds'],
                 completed=state['completed'],normal_done=state['normal_done'],training_mode=state['mode'],
-                validation_suppressed=not state['validation_enabled'],validation_loss_threshold=cfg['loss_threshold'],
+                validation_suppressed=not state['validation_enabled'],validation_loss_threshold=cfg.get('all_dataset_validation_loss',cfg['loss_threshold']) if all_dataset else cfg['loss_threshold'],
                 next_full_check=(round_ if state['streak'] else ((round_//cfg['eval_every'])+1)*cfg['eval_every']) if state['validation_enabled'] else None,
                 active_examples=len(active),sigreg_coefficient=cfg['sigreg'],evaluation=None)
             n=cfg['examples']*3//4 if prior else cfg['examples']
@@ -114,7 +124,8 @@ def run(config):
                 if (root/'STOP').exists():status(state='paused',reason='Checkpoint, optimizer and cursor saved');return
             mean=state['loss_sum']/state['loss_count'];state['cursor']=0
             state['round']+=1
-            if not state['validation_enabled'] and mean<=cfg['loss_threshold']:state['validation_enabled']=True
+            gate=cfg.get('all_dataset_validation_loss',cfg['loss_threshold']) if all_dataset else cfg['loss_threshold']
+            if not state['validation_enabled'] and mean<=gate:state['validation_enabled']=True
             if state['validation_enabled']:state['normal_done']+=1
             status(round_mean_loss=mean,normal_done=state['normal_done'])
             atomic_json(root/f'{phase}_training_only_{round_:06d}.json',{'epoch':round_,'loss':mean,'validation_enabled':state['validation_enabled']})
