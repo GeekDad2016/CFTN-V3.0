@@ -64,8 +64,14 @@ def snapshot(root):
             (root/f"{r['phase']}_epoch_{r['epoch']:03d}.json").stat().st_mtime<=promotion_path.stat().st_mtime]
         evidence_round=prior_reports[-1]['epoch'] if prior_reports else None
     manual=read(root/(status.get('phase','baseline')+'_manual_validation.json'))
+    # V3.2 initially wrote history without the latest-result pointer. Recover it.
+    for path in root.glob(status.get('phase','baseline')+'_manual_round_*.json'):
+        candidate=read(path)
+        if candidate.get('epoch',-1)>manual.get('epoch',-1):manual=candidate
+    if manual and not (root/'VALIDATE_REQUEST.json').exists():
+        status={**status,'manual_validation':'complete','manual_validation_round':manual.get('epoch')}
     if manual and manual.get('epoch',-1)>=max(promotion.get('epoch',-1) or -1,latest.get('epoch',-1) or -1):
-        observation=manual;evidence_kind='Manual validation (routine panel)';evidence_round=manual['epoch']
+        observation=manual;evidence_kind='Manual validation (full panel)' if manual.get('evaluation_scope')=='full' or status.get('policy',{}).get('model') else 'Manual validation (routine panel)';evidence_round=manual['epoch']
     manual_records={}
     for path in list(root.glob('*_manual_round_*.json'))+list(root.glob('*_manual_validation.json')):
         record=read(path)

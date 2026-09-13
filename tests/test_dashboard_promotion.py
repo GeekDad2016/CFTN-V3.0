@@ -1,6 +1,16 @@
 import json
 from cftn_v3.local_math_dashboard import snapshot
 
+def test_manual_history_without_pointer_is_visible(tmp_path):
+    (tmp_path/'status.json').write_text(json.dumps({'phase':'add','state':'paused','policy':{'model':{'d':384}}}))
+    metric={'examples':6,'accuracy':.5,'trace_accuracy':.5,'format_accuracy':1.,'criteria':{},'samples':[]}
+    (tmp_path/'add_manual_round_000041.json').write_text(json.dumps({'phase':'add','epoch':41,'active':metric,'retention':{},'passed':False}))
+    data=snapshot(tmp_path)
+    assert data['display_evaluation']['epoch']==41
+    assert data['display_evaluation']['kind']=='Manual validation (full panel)'
+    assert data['status']['manual_validation']=='complete'
+    assert data['status']['manual_validation_round']==41
+
 def test_full_failure_overrides_perfect_routine_and_exposes_samples(tmp_path):
     metric={'examples':32,'accuracy':1.,'trace_accuracy':1.,'format_accuracy':1.}
     routine={'phase':'sums','epoch':46,'passed':True,'active':{'criteria':{'sums':metric},**metric},'retention':{}}

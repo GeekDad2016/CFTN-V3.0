@@ -116,12 +116,17 @@ def run(config):
             manual=(root/'VALIDATE_REQUEST.json').exists()
             due=state['validation_enabled'] and (round_%cfg['eval_every']==0 or state['streak'] or state['normal_done']>=cfg['normal_rounds'] or state['mode']=='repair' and state['repair_done']>=cfg['repair_rounds'])
             if manual or due:
+                if manual:status(manual_validation='running')
                 report={'phase':phase,'epoch':round_,'loss':mean,'updated':time.time(),'active':ev(validation,'Full stage validation'),
                         'retention':ev(retention,'Fixed cumulative retention')}
                 passed=all(report[k][m]==1. for k in ('active','retention') for m in ('accuracy','trace_accuracy','format_accuracy'))
                 report['passed']=passed
                 if manual:
-                    atomic_json(root/f'{phase}_manual_round_{round_:06d}.json',report);(root/'VALIDATE_REQUEST.json').unlink(missing_ok=True)
+                    report['evaluation_scope']='full'
+                    atomic_json(root/f'{phase}_manual_round_{round_:06d}.json',report)
+                    atomic_json(root/f'{phase}_manual_validation.json',report)
+                    (root/'VALIDATE_REQUEST.json').unlink(missing_ok=True)
+                    status(manual_validation='complete',manual_validation_round=round_,evaluation=None)
                 if due:
                     state['streak']=state['streak']+1 if passed else 0
                     if state['mode']=='repair' and passed:
