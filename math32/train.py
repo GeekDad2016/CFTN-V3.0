@@ -37,6 +37,7 @@ def evaluate(model,rows,progress):
 
 def run(config):
     cfg=json.loads(Path(config).read_text());root=Path(cfg['root']);root.mkdir(parents=True,exist_ok=True)
+    all_dataset=cfg.get('training_scope')=='all_dataset'
     lock=root/'native_training.lock';fd=os.open(lock,os.O_CREAT|os.O_EXCL|os.O_WRONLY);os.write(fd,json.dumps({'pid':os.getpid(),'output':str(root)}).encode());os.close(fd)
     publisher=StatusPublisher(root/'status.json');display={}
     def status(**kw):display.update(kw);publisher({'pid':os.getpid(),'updated':time.time(),**display})
@@ -48,7 +49,8 @@ def run(config):
         records={s:[json.loads(l) for l in (data/(s+'.jsonl')).read_text().splitlines()] for s in ('train','validation','test')}
         tok=Tokenizer(json.loads((data/'vocab.json').read_text()));model=Tower(tok,**cfg['model']).to('cuda')
         opt=torch.optim.AdamW(model.parameters(),lr=cfg['lr'],weight_decay=.01)
-        state={'stage':0,'round':1,'cursor':0,'updates':0,'completed':[],'validation_enabled':False,'normal_done':0,'streak':0,'mode':'normal','repair_done':0,'repair_cycles':0}
+        state={'stage':0,'round':1,'cursor':0,'updates':0,'completed':[],
+               'validation_enabled':all_dataset,'normal_done':0,'streak':0,'mode':'normal','repair_done':0,'repair_cycles':0}
         path=root/'current.specialist';binding=hashlib.sha256((data/'manifest.json').read_bytes()).hexdigest()
         if path.exists():
             p=torch.load(path,map_location='cpu',weights_only=True);assert p['dataset_hash']==binding and p['config']==cfg
@@ -64,24 +66,28 @@ def run(config):
                strict_gate=True,checkpoint=str(path),gpu=torch.cuda.get_device_name(),stage_count=len(manifest['stages']))
         if state.get('terminal'):status(state='blocked',reason=state['terminal']);return
         if not path.exists():save()
-        while state['stage']<len(manifest['stages']):
+        while (state['round']<=cfg['all_dataset_epochs'] if all_dataset else state['stage']<len(manifest['stages'])):
             idx=state['stage'];stage=manifest['stages'][idx];phase=stage['name']
-            active=[r for r in records['train'] if r['stage']==idx];prior=[r for r in records['train'] if r['stage']<idx]
-            validation=[r for r in records['validation'] if r['stage']==idx]
+            active=records['train'] if all_dataset else [r for r in records['train'] if r['stage']==idx]
+            prior=[] if all_dataset else [r for r in records['train'] if r['stage']<idx]
+            validation=records['validation'] if all_dataset else [r for r in records['validation'] if r['stage']==idx]
             # Fixed cumulative retention panel, balanced across all accepted stages/cases.
-            earlier=[r for r in records['validation'] if r['stage']<idx]
+            earlier=[] if all_dataset else [r for r in records['validation'] if r['stage']<idx]
             retention=list({r['id']:r for r in sample(earlier,min(len(earlier),512),cfg['seed'])}.values())
             def ev(rows,label):
                 status(state='evaluating',evaluation=label,evaluation_done=0,evaluation_total=len(rows))
                 return evaluate(model,rows,lambda n,t:status(evaluation_done=n,evaluation_total=t))
             round_=state['round'];seed=cfg['seed']+idx*100000+round_
-            status(phase=phase,scope=stage['scope'],stage_index=idx,epoch=round_,epochs=cfg['normal_rounds'],
+            status(phase='all_criteria_full_dataset' if all_dataset else phase,
+                scope='Every record in the V3.2 training split, shuffled once per epoch' if all_dataset else stage['scope'],
+                stage_index=None if all_dataset else idx,epoch=round_,epochs=cfg['all_dataset_epochs'] if all_dataset else cfg['normal_rounds'],
                 completed=state['completed'],normal_done=state['normal_done'],training_mode=state['mode'],
                 validation_suppressed=not state['validation_enabled'],validation_loss_threshold=cfg['loss_threshold'],
                 next_full_check=(round_ if state['streak'] else ((round_//cfg['eval_every'])+1)*cfg['eval_every']) if state['validation_enabled'] else None,
                 active_examples=len(active),sigreg_coefficient=cfg['sigreg'],evaluation=None)
             n=cfg['examples']*3//4 if prior else cfg['examples']
-            trainrows=sample(active,n,seed)+sample(prior,cfg['examples']-n,seed+1)
+            trainrows=list(active) if all_dataset else sample(active,n,seed)+sample(prior,cfg['examples']-n,seed+1)
+            if all_dataset:random.Random(seed).shuffle(trainrows)
             if state['mode']=='repair':
                 failed=set(state.get('repair_cases',[]));focused=[r for r in active if r['case'] in failed]
                 if focused:trainrows=sample(focused,cfg['examples']*3//5,seed)+sample(active,cfg['examples']//5,seed+1)+sample(prior or active,cfg['examples']-cfg['examples']*4//5,seed+2)
@@ -114,7 +120,7 @@ def run(config):
             atomic_json(root/f'{phase}_training_only_{round_:06d}.json',{'epoch':round_,'loss':mean,'validation_enabled':state['validation_enabled']})
             save()
             manual=(root/'VALIDATE_REQUEST.json').exists()
-            due=state['validation_enabled'] and (round_%cfg['eval_every']==0 or state['streak'] or state['normal_done']>=cfg['normal_rounds'] or state['mode']=='repair' and state['repair_done']>=cfg['repair_rounds'])
+            due=state['validation_enabled'] and (round_%cfg['eval_every']==0 if all_dataset else (round_%cfg['eval_every']==0 or state['streak'] or state['normal_done']>=cfg['normal_rounds'] or state['mode']=='repair' and state['repair_done']>=cfg['repair_rounds']))
             if manual or due:
                 if manual:status(manual_validation='running')
                 report={'phase':phase,'epoch':round_,'loss':mean,'updated':time.time(),'active':ev(validation,'Full stage validation'),
@@ -127,6 +133,11 @@ def run(config):
                     atomic_json(root/f'{phase}_manual_validation.json',report)
                     (root/'VALIDATE_REQUEST.json').unlink(missing_ok=True)
                     status(manual_validation='complete',manual_validation_round=round_,evaluation=None)
+                if all_dataset:
+                    report.update(full_consecutive=0,promoted=False,evaluation_scope='full_dataset_validation')
+                    atomic_json(root/f'all_criteria_epoch_{round_:03d}.json',report)
+                    save()
+                    continue
                 if due:
                     state['streak']=state['streak']+1 if passed else 0
                     if state['mode']=='repair' and passed:
@@ -152,7 +163,7 @@ def run(config):
                 state['repair_done']+=1
                 if state['repair_done']>=cfg['repair_rounds']:state.update(mode='normal',normal_done=0,streak=0)
             save()
-        status(state='complete',accepted=True,reason='All maths stages passed')
+        status(state='complete',accepted=True,reason='Full-dataset experiment completed' if all_dataset else 'All maths stages passed')
     except Exception as e:status(state='failed',reason=str(e));raise
     finally:lock.unlink(missing_ok=True)
 
