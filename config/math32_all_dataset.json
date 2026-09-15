@@ -14,5 +14,5 @@
   "eval_every": 20,
   "training_scope": "all_dataset",
   "all_dataset_epochs": null,
-  "all_dataset_validation_loss": 0.05
+  "all_dataset_validation_loss": 0.002
 }

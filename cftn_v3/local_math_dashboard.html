@@ -131,7 +131,8 @@ plot(rows);el('history').replaceChildren();for(const r of [...rows].reverse()){c
 const expanded=new Set([...el('examples').children].filter(x=>x.open).map(x=>x.dataset.prompt));el('examples').replaceChildren();for(const r of d.samples||[]){const box=document.createElement('details'),title=document.createElement('summary'),body=document.createElement('pre');box.dataset.prompt=r.prompt;box.open=expanded.has(r.prompt);const before=(d.before?.active?.samples||[]).find(x=>x.prompt===r.prompt);title.textContent=(r.answer_correct?'Correct | ':'Incorrect | ')+questionLabel(r.prompt);body.textContent='Exact input: '+r.prompt+'\nExpected answer: '+r.expected+'\nExpected procedure: '+(r.expected_trace||'-')+'\nBefore stage training: '+(before?.output||'Not recorded')+'\nLatest model output: '+r.output+'\nTrace correct: '+r.trace_correct;box.append(title,body);el('examples').append(box)}
 }catch(e){el('connection').textContent='Connection error: '+e.message;el('state').textContent='Cannot load training results';el('reason').textContent='Check the local LAN address and the dashboard server. Previously rendered results, if any, may be stale.'}}
 el('validate-now').onclick=async()=>{el('validate-now').disabled=true;try{const r=await fetch('/api/validate',{method:'POST',headers:{'X-CFTN-Action':'validate'}});if(!r.ok)throw new Error(await r.text());el('validation-request').textContent='Queued for the next round boundary';await refresh()}catch(e){el('validation-request').textContent='Could not queue validation: '+e.message;el('validate-now').disabled=false}};
-refresh();setInterval(refresh,5000);
+async function poll(){await refresh();setTimeout(poll,5000)}
+poll();
 </script></html>
 
 

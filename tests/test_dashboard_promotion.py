@@ -1,6 +1,18 @@
 import json
 from cftn_v3.local_math_dashboard import snapshot
 
+def test_full_dataset_legacy_phase_results_are_visible(tmp_path):
+    (tmp_path/'status.json').write_text(json.dumps({'phase':'all_criteria_full_dataset','state':'paused','policy':{'training_scope':'all_dataset','model':{}}}))
+    metric={'examples':1,'accuracy':0.,'trace_accuracy':0.,'format_accuracy':1.}
+    sample={'criterion':'add','prompt':'1+2','expected':'3','output':'4','answer_correct':False,'trace_correct':False}
+    report={'phase':'01_add_within_9','epoch':80,'active':{**metric,'criteria':{'add':metric},'samples':[sample]},'retention':{}}
+    (tmp_path/'all_criteria_epoch_080.json').write_text(json.dumps(report))
+    assert snapshot(tmp_path)['samples']==[sample]
+    (tmp_path/'01_add_within_9_manual_validation.json').write_text(json.dumps({**report,'epoch':81,'evaluation_scope':'full'}))
+    result=snapshot(tmp_path)
+    assert result['display_evaluation']['epoch']==81
+    assert result['criterion_details'][0]['samples']==[sample]
+
 def test_manual_history_without_pointer_is_visible(tmp_path):
     (tmp_path/'status.json').write_text(json.dumps({'phase':'add','state':'paused','policy':{'model':{'d':384}}}))
     metric={'examples':6,'accuracy':.5,'trace_accuracy':.5,'format_accuracy':1.,'criteria':{},'samples':[]}

@@ -77,7 +77,7 @@ def run(config):
         if state.get('terminal'):status(state='blocked',reason=state['terminal']);return
         if not path.exists():save()
         while ((cfg.get('all_dataset_epochs') is None or state['round']<=cfg['all_dataset_epochs']) if all_dataset else state['stage']<len(manifest['stages'])):
-            idx=state['stage'];stage=manifest['stages'][idx];phase=stage['name']
+            idx=state['stage'];stage=manifest['stages'][idx];phase='all_criteria_full_dataset' if all_dataset else stage['name']
             active=records['train'] if all_dataset else [r for r in records['train'] if r['stage']==idx]
             prior=[] if all_dataset else [r for r in records['train'] if r['stage']<idx]
             validation=records['validation'] if all_dataset else [r for r in records['validation'] if r['stage']==idx]

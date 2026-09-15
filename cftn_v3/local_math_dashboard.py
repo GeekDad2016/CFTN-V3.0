@@ -40,6 +40,11 @@ def snapshot(root):
     reports=[read(f) for f in sorted(root.glob('*_epoch_*.json'),key=lambda p:p.stat().st_mtime)]
     reports=[r for r in reports if 'active' in r and 'retention' in r]
     status=read(root/'status.json')
+    # Older full-dataset workers retained stage one's phase in saved reports.
+    # Normalize only inside an explicitly identified full-dataset run.
+    all_dataset=status.get('policy',{}).get('training_scope')=='all_dataset'
+    if all_dataset:
+        for report in reports:report['phase']=status.get('phase')
     fallback=read(root/'status_fallback.json')
     if fallback.get('updated',0)>status.get('updated',0):status=fallback
     if status.get('status_warning'):errors.append(status['status_warning'])
@@ -64,6 +69,10 @@ def snapshot(root):
             (root/f"{r['phase']}_epoch_{r['epoch']:03d}.json").stat().st_mtime<=promotion_path.stat().st_mtime]
         evidence_round=prior_reports[-1]['epoch'] if prior_reports else None
     manual=read(root/(status.get('phase','baseline')+'_manual_validation.json'))
+    if all_dataset:
+        for path in root.glob('*_manual_validation.json'):
+            candidate=read(path)
+            if candidate.get('epoch',-1)>manual.get('epoch',-1):manual=candidate
     # V3.2 initially wrote history without the latest-result pointer. Recover it.
     for path in root.glob(status.get('phase','baseline')+'_manual_round_*.json'):
         candidate=read(path)
